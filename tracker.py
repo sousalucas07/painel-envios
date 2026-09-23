@@ -6,14 +6,12 @@ import requests
 from sheets import conectar_planilha_ativa as conectar_planilha
 
 def obter_shippo_key():
-    # 1. Tenta buscar direto do st.secrets (Streamlit Cloud)
     try:
         import streamlit as st
         if "SHIPPO_LIVE_KEY" in st.secrets:
             return st.secrets["SHIPPO_LIVE_KEY"]
     except Exception:
         pass
-    # 2. Tenta buscar do .env / GitHub Actions
     return os.getenv("SHIPPO_LIVE_KEY", "")
 
 def extrair_apenas_numeros_rastreio(texto):
@@ -24,7 +22,7 @@ def extrair_apenas_numeros_rastreio(texto):
 def consultar_shippo(tracking_code):
     shippo_key = obter_shippo_key()
     if not shippo_key:
-        print("❌ Chave da Shippo não encontrada!", flush=True)
+        print("❌ Chave da Shippo não encontrada nos Secrets!", flush=True)
         return None, None
 
     url = "https://api.goshippo.com/tracks/"
@@ -55,10 +53,10 @@ def consultar_shippo(tracking_code):
             status_final = f"{status_macro} - {detalhe}" if detalhe else status_macro
             return status_final if status_macro else "Em Trânsito", data_evento
         else:
-            print(f"⚠️ Resposta da API Shippo ({response.status_code}): {response.text}", flush=True)
+            print(f"⚠️ Erro Shippo ({response.status_code}): {response.text}", flush=True)
             return None, None
     except Exception as e:
-        print(f"⚠️ Exceção na API Shippo: {e}", flush=True)
+        print(f"⚠️ Exceção na conexão com Shippo: {e}", flush=True)
         return None, None
 
 def rodar_monitoramento():
@@ -82,6 +80,7 @@ def rodar_monitoramento():
     idx_nome = next((i + 1 for i, c in enumerate(cabecalho) if "NOME" in c), 4)
 
     linhas = valores[1:]
+    mudancas = 0
     for index, row in enumerate(linhas, start=2):
         if len(row) < idx_rastreio: continue
         
@@ -92,17 +91,21 @@ def rodar_monitoramento():
         tracking_code = extrair_apenas_numeros_rastreio(rastreio)
         if not tracking_code: continue
 
-        print(f"🔎 Checando linha {index} ({nome}) | Código: {tracking_code}...", flush=True)
+        print(f"🔎 Checando linha {index} ({nome})...", flush=True)
         novo_status, data_evento = consultar_shippo(tracking_code)
 
         if novo_status and novo_status.upper() != status_atual.upper():
             print(f"   ✨ Mudança Detectada: '{status_atual}' ➔ '{novo_status}'", flush=True)
             sheet.update_cell(index, idx_status, novo_status)
             sheet.update_cell(index, idx_atualizacao, data_evento)
+            mudancas += 1
             
         time.sleep(0.2)
 
-    print("✅ Checagem concluída com sucesso!\n", flush=True)
+    if mudancas == 0:
+        print("✅ Checagem concluída! Nenhum status novo na USPS.", flush=True)
+    else:
+        print(f"✅ Checagem concluída com sucesso! {mudancas} etiquetas atualizadas.", flush=True)
 
 if __name__ == "__main__":
     rodar_monitoramento()
