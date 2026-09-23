@@ -50,10 +50,33 @@ def conectar_client():
 
 
 def conectar_planilha_ativa():
-    client = conectar_client()
-    if client:
-        return client.open("Rastreio de Etiquetas ShippingEasy").get_worksheet(0)
-    return None
+    """
+    Conecta ao Google Sheets, usando `st.secrets` (se estiver na nuvem) 
+    ou o arquivo `credentials.json` (se estiver no Mac/Local).
+    Retorna o objeto da Worksheet pública.
+    """
+    try:
+        import streamlit as st
+        # Tenta conectar usando os Secrets do Streamlit Cloud
+        if "gcp_service_account" in st.secrets:
+            credenciais = dict(st.secrets["gcp_service_account"])
+            # Gspread precisa da string da chave privada formatada corretamente
+            credenciais["private_key"] = credenciais["private_key"].replace('\\n', '\n')
+            
+            client = gspread.service_account_from_dict(credenciais)
+            planilha = client.open("Rastreio de Etiquetas ShippingEasy")
+            return planilha.get_worksheet(0)
+    except Exception as e:
+        print(f"⚠️ Aviso ao tentar ler st.secrets para Google Sheets: {e}")
+
+    # Fallback para o seu Mac (lendo o arquivo json local)
+    try:
+        client = gspread.service_account(filename="credentials.json")
+        planilha = client.open("Rastreio de Etiquetas ShippingEasy")
+        return planilha.get_worksheet(0)
+    except Exception as e:
+        print(f"❌ Erro final ao conectar ao Google Sheets: {e}")
+        return None
 
 
 # 📌 ATALHOS DE COMPATIBILIDADE PARA OUTROS SCRIPTS
