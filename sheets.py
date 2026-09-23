@@ -70,30 +70,36 @@ def buscar_link_tarefa(num_pedido):
     Busca no Bitrix a tarefa cujo TÍTULO contenha o ID do pedido
     e retorna a URL com o ID REAL da tarefa interna do Bitrix.
     """
+    # Busca a URL tanto do st.secrets quanto do os.getenv
     webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
-    if not num_pedido:
+    try:
+        import streamlit as st
+        if "BITRIX_WEBHOOK_URL" in st.secrets:
+            webhook_url = st.secrets["BITRIX_WEBHOOK_URL"]
+    except Exception:
+        pass
+
+    if not num_pedido or not webhook_url:
         return ""
 
     id_str = str(num_pedido).strip()
 
-    if webhook_url:
-        try:
-            endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
-            payload = {"filter": {"%TITLE": id_str}, "select": ["ID", "TITLE"]}
-            resp = requests.post(endpoint, json=payload, timeout=10)
-            if resp.status_code == 200:
-                dados = resp.json()
-                tarefas = dados.get("result", {}).get("tasks", [])
+    try:
+        endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
+        payload = {"filter": {"%TITLE": id_str}, "select": ["ID", "TITLE"]}
+        resp = requests.post(endpoint, json=payload, timeout=10)
+        if resp.status_code == 200:
+            dados = resp.json()
+            tarefas = dados.get("result", {}).get("tasks", [])
 
-                for task in tarefas:
-                    titulo = str(task.get("title", "")).upper()
-                    task_id_real = task.get("id")
+            for task in tarefas:
+                titulo = str(task.get("title", "")).upper()
+                task_id_real = task.get("id")
 
-                    # Garante que o ID do pedido está contido no título da tarefa
-                    if id_str in titulo and task_id_real:
-                        return f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{task_id_real}/"
-        except Exception as e:
-            print(f"⚠️ Erro ao buscar tarefa no Bitrix para o ID {id_str}: {e}")
+                if id_str in titulo and task_id_real:
+                    return f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{task_id_real}/"
+    except Exception as e:
+        print(f"⚠️ Erro ao buscar tarefa no Bitrix para o ID {id_str}: {e}")
 
     return ""
 

@@ -5,7 +5,16 @@ from datetime import datetime
 import requests
 from sheets import conectar_planilha_ativa as conectar_planilha
 
-SHIPPO_LIVE_KEY = os.getenv("SHIPPO_LIVE_KEY", "")
+def obter_shippo_key():
+    # 1. Tenta buscar direto do st.secrets (Streamlit Cloud)
+    try:
+        import streamlit as st
+        if "SHIPPO_LIVE_KEY" in st.secrets:
+            return st.secrets["SHIPPO_LIVE_KEY"]
+    except Exception:
+        pass
+    # 2. Tenta buscar do .env / GitHub Actions
+    return os.getenv("SHIPPO_LIVE_KEY", "")
 
 def extrair_apenas_numeros_rastreio(texto):
     if not texto: return ""
@@ -13,9 +22,14 @@ def extrair_apenas_numeros_rastreio(texto):
     return numeros[0] if numeros else str(texto).strip()
 
 def consultar_shippo(tracking_code):
+    shippo_key = obter_shippo_key()
+    if not shippo_key:
+        print("❌ Chave da Shippo não encontrada!", flush=True)
+        return None, None
+
     url = "https://api.goshippo.com/tracks/"
     headers = {
-        "Authorization": f"ShippoToken {SHIPPO_LIVE_KEY}",
+        "Authorization": f"ShippoToken {shippo_key}",
         "Content-Type": "application/json"
     }
     payload = {"carrier": "usps", "tracking_number": tracking_code}
@@ -40,27 +54,31 @@ def consultar_shippo(tracking_code):
 
             status_final = f"{status_macro} - {detalhe}" if detalhe else status_macro
             return status_final if status_macro else "Em Trânsito", data_evento
-        return None, None
+        else:
+            print(f"⚠️ Resposta da API Shippo ({response.status_code}): {response.text}", flush=True)
+            return None, None
     except Exception as e:
-        print(f"⚠️ Exceção na API Shippo: {e}")
+        print(f"⚠️ Exceção na API Shippo: {e}", flush=True)
         return None, None
 
 def rodar_monitoramento():
     print("\n🚀 INICIANDO MONITORAMENTO VIA SHIPPO API...", flush=True)
     sheet = conectar_planilha()
-    if not sheet: return
+    if not sheet: 
+        print("❌ Não foi possível conectar à planilha.", flush=True)
+        return
 
     try:
         valores = sheet.get_all_values()
         if not valores or len(valores) <= 1: return
         cabecalho = [str(c).upper().strip() for c in valores[0]]
     except Exception as e:
-        print(f"❌ Erro ao ler planilha: {e}")
+        print(f"❌ Erro ao ler planilha: {e}", flush=True)
         return
 
-    idx_status = next((i + 1 for i, c in enumerate(cabecalho) if "STATUS" in c), 8)
-    idx_atualizacao = next((i + 1 for i, c in enumerate(cabecalho) if "ATUALIZA" in c), 9)
-    idx_rastreio = next((i + 1 for i, c in enumerate(cabecalho) if "RASTREIO" in c), 6)
+    idx_status = next((i + 1 for i, c in enumerate(cabecalho) if "STATUS" in c), 7)
+    idx_atualizacao = next((i + 1 for i, c in enumerate(cabecalho) if "ATUALIZA" in c), 8)
+    idx_rastreio = next((i + 1 for i, c in enumerate(cabecalho) if "RASTREIO" in c), 5)
     idx_nome = next((i + 1 for i, c in enumerate(cabecalho) if "NOME" in c), 4)
 
     linhas = valores[1:]
