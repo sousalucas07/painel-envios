@@ -1,8 +1,38 @@
+import os
 import time
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+# 📌 INJEÇÃO AUTOMÁTICA DE SECRETS NA NUVEM (Para o os.getenv funcionar no Streamlit Cloud)
+try:
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v
+except Exception:
+    pass
+
+# Importa as funções da planilha, monitoramento e sincronização
+try:
+    from sheets import (
+        deletar_envio_sheets,
+        ler_envios_sheets,
+        registrar_envio_sheets,
+    )
+except ImportError:
+    ler_envios_sheets = deletar_envio_sheets = registrar_envio_sheets = None
+
+try:
+    from tracker import rodar_monitoramento
+except ImportError:
+    rodar_monitoramento = None
+
+try:
+    from atualizar_tarefas import sincronizar_links_tarefas
+except ImportError:
+    sincronizar_links_tarefas = None
 
 # Importa as funções da planilha, monitoramento e sincronização
 try:
