@@ -1,0 +1,11 @@
+streamlit
+pandas
+plotly
+gspread
+oauth2client
+requests
+python-dotenv
+google-genai
+pymupdf
+Pillow
+playwright
