@@ -32,7 +32,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Guarda o horário da última vez que o utilizador visualizou/recarregou o ecrã
+# Guarda o horário da última vez que o usuário visualizou/recarregou a tela
 if "ultima_visualizacao" not in st.session_state:
     st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
 
@@ -178,6 +178,13 @@ with tab_dashboard:
 
             col_grafico1, col_grafico2 = st.columns([1, 1])
 
+            cores_status = {
+                "Pendentes de Envio": "#f9cdc8",
+                "Entregues": "#2ecc71",
+                "Em Trânsito": "#3498db",
+                "Outros": "#95a5a6",
+            }
+
             with col_grafico1:
                 st.markdown("#### Distribuição de Status")
                 status_counts = (
@@ -186,12 +193,6 @@ with tab_dashboard:
                 status_counts.columns = ["Status", "Quantidade"]
                 status_counts["Status"] = status_counts["Status"].astype(str)
 
-                cores_status = {
-                    "Pendentes de Envio": "#f9cdc8",
-                    "Entregues": "#2ecc71",
-                    "Em Trânsito": "#3498db",
-                    "Outros": "#95a5a6",
-                }
                 cores_presentes = {
                     k: v
                     for k, v in cores_status.items()
@@ -217,28 +218,29 @@ with tab_dashboard:
 
             with col_grafico2:
                 st.markdown("#### Volume por Categoria")
-                
-                # Gráfico limpo, sem o parâmetro color que causa o crash
                 fig_bars = px.bar(
                     status_counts,
                     x="Status",
                     y="Quantidade",
                     text_auto=True,
-                    template="plotly_dark"
+                    template="plotly_dark",
                 )
-                
-                # Pinta as barras de forma manual e totalmente segura
-                cores_lista = [cores_status.get(val, "#95a5a6") for val in status_counts["Status"]]
+                cores_lista = [
+                    cores_status.get(val, "#95a5a6")
+                    for val in status_counts["Status"]
+                ]
                 fig_bars.update_traces(marker_color=cores_lista)
-                
                 fig_bars.update_layout(
                     height=320,
                     bargap=0.6,
                     margin=dict(t=20, b=20, l=10, r=10),
                     xaxis_title="",
                     yaxis_title="",
+                    showlegend=False,
                 )
                 st.plotly_chart(fig_bars, use_container_width=True)
+
+            st.markdown("---")
 
             st.markdown("### 📋 Histórico Detalhado")
 
@@ -404,7 +406,6 @@ with tab_inserir:
             in_nome = st.text_input(
                 "Nome do Cliente *", placeholder="Ex: Rodrigo Silva"
             )
-            in_telefone = st.text_input("Telefone", placeholder="Opcional")
         with col2:
             in_rastreio = st.text_input(
                 "Código de Rastreio USPS *", placeholder="Ex: 94055502..."
@@ -433,7 +434,6 @@ with tab_inserir:
                     dados_manuais = {
                         "num_pedido": in_pedido.strip(),
                         "nome": in_nome.strip(),
-                        "telefone": in_telefone.strip(),
                         "tracking_code": in_rastreio.strip(),
                         "tipo_envio": in_tipo,
                         "data_criacao": data_formatada,

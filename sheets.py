@@ -140,7 +140,6 @@ def registrar_envio_sheets(dados):
             num_p,
             link_tarefa,
             str(dados.get("nome", "")),
-            str(dados.get("telefone", "")),
             str(dados.get("tracking_code", "")),
             str(dados.get("tipo_envio", "")),
             "GERADA / AGUARDANDO",
