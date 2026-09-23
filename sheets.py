@@ -19,31 +19,34 @@ ID_PLANILHA_AUDITORIA = "1Xi3_aSY9ovKEPT8EcoLa7WNhMlITjU0FL6-csYTdCDM"
 
 
 def conectar_client():
+    # 1. Tenta autenticar via Secrets do Streamlit Cloud (Nuvem)
     try:
-        # 1. Tenta autenticar via Secrets do Streamlit Cloud (Nuvem)
-        if hasattr(st, "secrets") and "gcp_service_account" in st.secrets:
+        if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = Credentials.from_service_account_info(
                 creds_dict, scopes=SCOPES
             )
             return gspread.authorize(creds)
+    except Exception:
+        # Passa silenciosamente caso esteja rodando localmente sem o secrets.toml
+        pass
 
-        # 2. Se estiver no computador local, busca o credentials.json
-        elif os.path.exists("credentials.json"):
+    # 2. Se estiver no computador local, usa o credentials.json
+    if os.path.exists("credentials.json"):
+        try:
             creds = Credentials.from_service_account_file(
                 "credentials.json", scopes=SCOPES
             )
             return gspread.authorize(creds)
-
-        else:
-            print(
-                "❌ Nenhuma credencial encontrada (nem em st.secrets nem em"
-                " credentials.json)."
-            )
+        except Exception as e:
+            print(f"❌ Erro ao ler credentials.json: {e}")
             return None
-    except Exception as e:
-        print(f"❌ Erro ao autenticar no Google: {e}")
-        return None
+
+    print(
+        "❌ Nenhuma credencial encontrada (nem em st.secrets nem em"
+        " credentials.json)."
+    )
+    return None
 
 
 def conectar_planilha_ativa():
@@ -124,7 +127,6 @@ def registrar_envio_sheets(dados):
     hoje = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # Se uma data de criação específica for informada (ex: etiqueta antiga), usa ela.
-    # Caso contrário, assume a data/hora atual da geração.
     data_criacao_etiqueta = dados.get("data_criacao") or hoje
 
     num_p = str(dados.get("num_pedido", ""))
@@ -134,7 +136,7 @@ def registrar_envio_sheets(dados):
         # 1. Registra na Planilha Pública (Dashboard) -> USA A DATA DE CRIAÇÃO DA ETIQUETA
         sheet_ativa = client.open("Rastreio de Etiquetas ShippingEasy").get_worksheet(0)
         linha_publica = [
-            data_criacao_etiqueta,  # <--- DATA REAL DA ETIQUETA
+            data_criacao_etiqueta,
             num_p,
             link_tarefa,
             str(dados.get("nome", "")),
@@ -142,15 +144,15 @@ def registrar_envio_sheets(dados):
             str(dados.get("tracking_code", "")),
             str(dados.get("tipo_envio", "")),
             "GERADA / AGUARDANDO",
-            hoje,  # <--- ÚLTIMA ATUALIZAÇÃO
+            hoje,
         ]
         sheet_ativa.append_row(linha_publica)
 
-        # 2. Registra na Planilha Privada (Auditoria + Custos) -> USA A DATA DE PROCESSAMENTO
+        # 2. Registra na Planilha Privada (Auditoria + Custos)
         try:
             sheet_privada = client.open_by_key(ID_PLANILHA_AUDITORIA).get_worksheet(0)
             linha_privada = [
-                hoje,  # <--- MANTÉM DATA DE PROCESSAMENTO/CUSTO
+                hoje,
                 num_p,
                 str(dados.get("nome", "")),
                 str(dados.get("tracking_code", "")),

@@ -1,0 +1,17 @@
+# Ambientes Virtuais e Cache Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Chaves e Credenciais (NUNCA SUBIR)
+.env
+credentials.json
+
+# Perfis de Navegação do Playwright
+perfil_shippingeasy/
+perfil_bot_usps/
+
+# PDFs Gerados e Temporários
+*.pdf
+relatorio_semanal.py

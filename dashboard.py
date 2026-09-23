@@ -32,11 +32,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Guarda o horário da última vez que o usuário visualizou/recarregou a tela
+# Guarda o horário da última vez que o utilizador visualizou/recarregou o ecrã
 if "ultima_visualizacao" not in st.session_state:
     st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
 
-# Cria as Abas do app da Nuvem (Painel PRIMEIRO)
+# Cria as Abas do app
 tab_dashboard, tab_inserir = st.tabs([
     "📊 Painel de Acompanhamento",
     "📥 Inserir Rastreio Antigo",
@@ -102,7 +102,9 @@ with tab_dashboard:
 
             df_envios["_is_atualizado"] = False
             if col_ult_atualizacao:
-                datas_dt = pd.to_datetime(df_envios[col_ult_atualizacao], errors="coerce")
+                datas_dt = pd.to_datetime(
+                    df_envios[col_ult_atualizacao], errors="coerce"
+                )
                 df_envios["_is_atualizado"] = (
                     datas_dt > st.session_state["ultima_visualizacao"]
                 )
@@ -112,7 +114,9 @@ with tab_dashboard:
                     by=col_ult_atualizacao, ascending=False
                 )
             elif col_data_criacao:
-                df_envios = df_envios.sort_values(by=col_data_criacao, ascending=False)
+                df_envios = df_envios.sort_values(
+                    by=col_data_criacao, ascending=False
+                )
             else:
                 df_envios = df_envios.iloc[::-1]
 
@@ -123,14 +127,17 @@ with tab_dashboard:
                 df_envios.loc[
                     df_envios[col_status]
                     .astype(str)
-                    .str.contains("DELIVERED|ENTREGUE|PICKED UP", case=False, na=False),
+                    .str.contains(
+                        "DELIVERED|ENTREGUE|PICKED UP", case=False, na=False
+                    ),
                     "Categoria Status",
                 ] = "Entregues"
                 df_envios.loc[
                     df_envios[col_status]
                     .astype(str)
                     .str.contains(
-                        "TRANSIT|WAY|ACCEPT|PROGRESS|GERADA|COLETA|OUT FOR DELIVERY",
+                        "TRANSIT|WAY|ACCEPT|PROGRESS|GERADA|COLETA|OUT FOR"
+                        " DELIVERY",
                         case=False,
                         na=False,
                     ),
@@ -140,7 +147,8 @@ with tab_dashboard:
                     df_envios[col_status]
                     .astype(str)
                     .str.contains(
-                        "ERROR|ALERT|DEVOLVIDO|UNAVAILABLE|AGUARDANDO|PRE TRANSIT",
+                        "ERROR|ALERT|DEVOLVIDO|UNAVAILABLE|AGUARDANDO|PRE"
+                        " TRANSIT",
                         case=False,
                         na=False,
                     ),
@@ -159,7 +167,11 @@ with tab_dashboard:
             )
             c4.metric(
                 "📨 Pendentes de Envio",
-                len(df_envios[df_envios["Categoria Status"] == "Pendentes de Envio"]),
+                len(
+                    df_envios[
+                        df_envios["Categoria Status"] == "Pendentes de Envio"
+                    ]
+                ),
             )
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -172,6 +184,7 @@ with tab_dashboard:
                     df_envios["Categoria Status"].value_counts().reset_index()
                 )
                 status_counts.columns = ["Status", "Quantidade"]
+                status_counts["Status"] = status_counts["Status"].astype(str)
 
                 cores_status = {
                     "Pendentes de Envio": "#f9cdc8",
@@ -179,13 +192,19 @@ with tab_dashboard:
                     "Em Trânsito": "#3498db",
                     "Outros": "#95a5a6",
                 }
+                cores_presentes = {
+                    k: v
+                    for k, v in cores_status.items()
+                    if k in status_counts["Status"].values
+                }
+
                 fig_donut = px.pie(
                     status_counts,
                     names="Status",
                     values="Quantidade",
                     hole=0.5,
                     color="Status",
-                    color_discrete_map=cores_status,
+                    color_discrete_map=cores_presentes,
                     template="plotly_dark",
                 )
                 fig_donut.update_layout(
@@ -198,15 +217,20 @@ with tab_dashboard:
 
             with col_grafico2:
                 st.markdown("#### Volume por Categoria")
+                
+                # Gráfico limpo, sem o parâmetro color que causa o crash
                 fig_bars = px.bar(
                     status_counts,
                     x="Status",
                     y="Quantidade",
                     text_auto=True,
-                    template="plotly_dark",
-                    color="Status",
-                    color_discrete_map=cores_status,
+                    template="plotly_dark"
                 )
+                
+                # Pinta as barras de forma manual e totalmente segura
+                cores_lista = [cores_status.get(val, "#95a5a6") for val in status_counts["Status"]]
+                fig_bars.update_traces(marker_color=cores_lista)
+                
                 fig_bars.update_layout(
                     height=320,
                     bargap=0.6,
@@ -216,11 +240,13 @@ with tab_dashboard:
                 )
                 st.plotly_chart(fig_bars, use_container_width=True)
 
-            st.markdown("---")
-
             st.markdown("### 📋 Histórico Detalhado")
 
-            col_filtro, col_btn_bitrix, col_btn_usps = st.columns([2.2, 1.3, 1.3])
+            col_filtro, col_btn_bitrix, col_btn_usps = st.columns([
+                2.2,
+                1.3,
+                1.3,
+            ])
 
             with col_filtro:
                 lista_pedidos = (
@@ -236,20 +262,28 @@ with tab_dashboard:
             with col_btn_bitrix:
                 st.write("")
                 st.write("")
-                if st.button("🔗 Sincronizar Links Bitrix", use_container_width=True):
+                if st.button(
+                    "🔗 Sincronizar Links Bitrix", use_container_width=True
+                ):
                     if sincronizar_links_tarefas:
-                        with st.spinner("Consultando e atualizando links no Bitrix..."):
+                        with st.spinner(
+                            "Consultando e atualizando links no Bitrix..."
+                        ):
                             sincronizar_links_tarefas()
                         st.success("✅ Links de tarefas atualizados!")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("❌ Módulo 'atualizar_tarefas.py' não encontrado.")
+                        st.error(
+                            "❌ Módulo 'atualizar_tarefas.py' não encontrado."
+                        )
 
             with col_btn_usps:
                 st.write("")
                 st.write("")
-                if st.button("⚡ Atualizar Status USPS", use_container_width=True):
+                if st.button(
+                    "⚡ Atualizar Status USPS", use_container_width=True
+                ):
                     if rodar_monitoramento:
                         with st.spinner("Consultando USPS..."):
                             rodar_monitoramento()
@@ -308,7 +342,9 @@ with tab_dashboard:
                 estilo_linhas_atualizadas, axis=None
             )
 
-            colunas_bloqueadas = [c for c in df_final_render.columns if c != "Excluir"]
+            colunas_bloqueadas = [
+                c for c in df_final_render.columns if c != "Excluir"
+            ]
 
             tabela_editada = st.data_editor(
                 df_styled,
@@ -344,7 +380,9 @@ with tab_dashboard:
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("❌ Ocorreu um erro ao excluir algum dos registos.")
+                        st.error(
+                            "❌ Ocorreu um erro ao excluir algum dos registos."
+                        )
 
         else:
             st.warning("⚠️ Nenhuma etiqueta cadastrada na planilha ainda.")
@@ -363,7 +401,9 @@ with tab_inserir:
             in_pedido = st.text_input(
                 "Número do Pedido / ID Bitrix *", placeholder="Ex: 262"
             )
-            in_nome = st.text_input("Nome do Cliente *", placeholder="Ex: Rodrigo Silva")
+            in_nome = st.text_input(
+                "Nome do Cliente *", placeholder="Ex: Rodrigo Silva"
+            )
             in_telefone = st.text_input("Telefone", placeholder="Opcional")
         with col2:
             in_rastreio = st.text_input(
@@ -398,8 +438,11 @@ with tab_inserir:
                         "tipo_envio": in_tipo,
                         "data_criacao": data_formatada,
                     }
-                    if registrar_envio_sheets and registrar_envio_sheets(dados_manuais):
+                    if registrar_envio_sheets and registrar_envio_sheets(
+                        dados_manuais
+                    ):
                         st.success(
-                            f"✅ Etiqueta de **{in_nome}** cadastrada com data {in_data_criacao.strftime('%d/%m/%Y')}!"
+                            f"✅ Etiqueta de **{in_nome}** cadastrada com data"
+                            f" {in_data_criacao.strftime('%d/%m/%Y')}!"
                         )
                         st.balloons()
