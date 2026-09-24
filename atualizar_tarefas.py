@@ -34,7 +34,6 @@ def sincronizar_links_tarefas():
     mudancas = 0
     webhook_url = obter_bitrix_url()
 
-    # Headers simulando um navegador real para o Bitrix não bloquear IP de Datacenter (AWS)
     headers_browser = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Content-Type": "application/json"
@@ -44,36 +43,37 @@ def sincronizar_links_tarefas():
         num_pedido = str(row[idx_pedido - 1]).strip() if len(row) >= idx_pedido else ""
         link_atual = str(row[idx_tarefa - 1]).strip() if len(row) >= idx_tarefa else ""
         
-        # Pula se já estiver preenchido
+        # Pula se a célula já estiver preenchida com um link do Bitrix
         if not num_pedido or "bitrix24" in link_atual: 
             continue
 
-        link_encontrado = ""
-
-        # 1. Se o ID for puramente numérico (Ex: 85716), gera o link direto do Bitrix
-        if num_pedido.isdigit():
-            link_encontrado = f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{num_pedido}/"
-        
-        # 2. Se não for número puro, tenta a busca via API com User-Agent de navegador
-        elif webhook_url:
+        if webhook_url:
             try:
                 endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
                 payload = {"filter": {"%TITLE": num_pedido}, "select": ["ID", "TITLE"]}
                 resp = requests.post(endpoint, json=payload, headers=headers_browser, timeout=10)
+                
                 if resp.status_code == 200:
                     tarefas = resp.json().get("result", {}).get("tasks", [])
+                    link_encontrado = ""
+                    
                     for task in tarefas:
-                        if num_pedido in str(task.get("title", "")).upper():
-                            link_encontrado = f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{task.get('id')}/"
+                        titulo = str(task.get("title", "")).upper()
+                        task_id_real = task.get("id")
+                        
+                        if num_pedido in titulo and task_id_real:
+                            link_encontrado = f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{task_id_real}/"
                             break
+
+                    if link_encontrado:
+                        sheet.update_cell(index, idx_tarefa, link_encontrado)
+                        print(f"✅ Tarefa {num_pedido} sincronizada com ID real {task_id_real}!", flush=True)
+                        mudancas += 1
+                        time.sleep(0.3)
+                    else:
+                        print(f"⚠️ Nenhuma tarefa encontrada no Bitrix para o ID {num_pedido}", flush=True)
             except Exception as e:
                 print(f"⚠️ Erro ao consultar Bitrix para {num_pedido}: {e}", flush=True)
-
-        if link_encontrado:
-            sheet.update_cell(index, idx_tarefa, link_encontrado)
-            print(f"✅ Tarefa {num_pedido} (Rossiane/outros) sincronizada!", flush=True)
-            mudancas += 1
-            time.sleep(0.3)
 
     if mudancas == 0:
         print("⚡ Nenhuma tarefa nova precisou ser sincronizada.", flush=True)
