@@ -3,6 +3,8 @@ import time
 import requests
 from sheets import conectar_planilha_ativa
 
+
+
 def obter_bitrix_url():
     url = ""
     try:
@@ -32,7 +34,10 @@ def sincronizar_links_tarefas():
         print("❌ ERRO CRÍTICO: 'BITRIX_WEBHOOK_URL' não foi encontrada nos Secrets da Nuvem nem no .env!", flush=True)
         return
     else:
-        print("✅ Webhook do Bitrix localizado com sucesso!", flush=True)
+        # Exibe o tamanho e as pontas da URL para validar o texto exato
+        inicio = webhook_url[:35]
+        fim = webhook_url[-8:]
+        print(f"✅ Webhook do Bitrix localizado! Tamanho: {len(webhook_url)} chars | Formato: '{inicio}...{fim}'", flush=True)
 
     try:
         valores = sheet.get_all_values()
