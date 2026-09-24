@@ -34,10 +34,7 @@ def sincronizar_links_tarefas():
         print("❌ ERRO CRÍTICO: 'BITRIX_WEBHOOK_URL' não foi encontrada nos Secrets da Nuvem nem no .env!", flush=True)
         return
     else:
-        # Exibe o tamanho e as pontas da URL para validar o texto exato
-        inicio = webhook_url[:35]
-        fim = webhook_url[-8:]
-        print(f"✅ Webhook do Bitrix localizado! Tamanho: {len(webhook_url)} chars | Formato: '{inicio}...{fim}'", flush=True)
+        print("✅ Webhook do Bitrix localizado com sucesso!", flush=True)
 
     try:
         valores = sheet.get_all_values()
@@ -53,6 +50,11 @@ def sincronizar_links_tarefas():
     linhas = valores[1:]
     mudancas = 0
 
+    headers_browser = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json"
+    }
+
     for index, row in enumerate(linhas, start=2):
         num_pedido = str(row[idx_pedido - 1]).strip() if len(row) >= idx_pedido else ""
         link_atual = str(row[idx_tarefa - 1]).strip() if len(row) >= idx_tarefa else ""
@@ -62,15 +64,9 @@ def sincronizar_links_tarefas():
 
         try:
             endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
+            payload = {"filter": {"%TITLE": num_pedido}, "select": ["ID", "TITLE"]}
             
-            # Envia via Query Parameters (formato nativo e mais aceito pela API de Webhook do Bitrix)
-            params = {
-                "filter[%TITLE%]": num_pedido,
-                "select[0]": "ID",
-                "select[1]": "TITLE"
-            }
-            
-            resp = requests.get(endpoint, params=params, timeout=10)
+            resp = requests.post(endpoint, json=payload, headers=headers_browser, timeout=10)
             
             if resp.status_code == 200:
                 tarefas = resp.json().get("result", {}).get("tasks", [])
@@ -92,7 +88,6 @@ def sincronizar_links_tarefas():
                 else:
                     print(f"⚠️ Nenhuma tarefa encontrada no Bitrix para o ID {num_pedido}", flush=True)
             else:
-                # Imprime a resposta detalhada do Bitrix para sabermos exatamente o motivo do 401
                 print(f"❌ Erro HTTP {resp.status_code} no Bitrix ao buscar {num_pedido}. Resposta: {resp.text}", flush=True)
         except Exception as e:
             print(f"⚠️ Erro ao consultar Bitrix para {num_pedido}: {e}", flush=True)
