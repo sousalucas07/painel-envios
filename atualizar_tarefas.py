@@ -5,7 +5,6 @@ from sheets import conectar_planilha_ativa
 
 def obter_bitrix_url():
     url = ""
-    # 1. Tenta buscar no Streamlit Secrets (Nuvem)
     try:
         import streamlit as st
         if hasattr(st, "secrets"):
@@ -13,14 +12,15 @@ def obter_bitrix_url():
                 url = st.secrets["BITRIX_WEBHOOK_URL"]
             elif "bitrix_webhook_url" in st.secrets:
                 url = st.secrets["bitrix_webhook_url"]
-    except Exception as e:
-        print(f"⚠️ Aviso ao ler st.secrets no Bitrix: {e}", flush=True)
+    except Exception:
+        pass
 
-    # 2. Fallback para .env local
     if not url:
         url = os.getenv("BITRIX_WEBHOOK_URL", "")
 
-    return str(url).strip()
+    # Remove qualquer quebra de linha (\n, \r), espaço ou aspa que a caixa do Secrets tenha inserido
+    url = str(url).replace("\n", "").replace("\r", "").replace(" ", "").strip('"').strip("'")
+    return url
 
 def sincronizar_links_tarefas():
     print("\n🔄 Conectando à planilha para sincronizar links de tarefas...", flush=True)
