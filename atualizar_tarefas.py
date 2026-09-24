@@ -18,9 +18,7 @@ def obter_bitrix_url():
     if not url:
         url = os.getenv("BITRIX_WEBHOOK_URL", "")
 
-    # Remove qualquer quebra de linha (\n, \r), espaço ou aspa que a caixa do Secrets tenha inserido
-    url = str(url).replace("\n", "").replace("\r", "").replace(" ", "").strip('"').strip("'")
-    return url
+    return str(url).replace("\n", "").replace("\r", "").replace(" ", "").strip('"').strip("'")
 
 def sincronizar_links_tarefas():
     print("\n🔄 Conectando à planilha para sincronizar links de tarefas...", flush=True)
@@ -30,8 +28,6 @@ def sincronizar_links_tarefas():
         return
 
     webhook_url = obter_bitrix_url()
-    
-    # 🚨 Alerta crítico se a chave não estiver acessível
     if not webhook_url:
         print("❌ ERRO CRÍTICO: 'BITRIX_WEBHOOK_URL' não foi encontrada nos Secrets da Nuvem nem no .env!", flush=True)
         return
@@ -52,23 +48,24 @@ def sincronizar_links_tarefas():
     linhas = valores[1:]
     mudancas = 0
 
-    headers_browser = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Content-Type": "application/json"
-    }
-    
     for index, row in enumerate(linhas, start=2):
         num_pedido = str(row[idx_pedido - 1]).strip() if len(row) >= idx_pedido else ""
         link_atual = str(row[idx_tarefa - 1]).strip() if len(row) >= idx_tarefa else ""
         
-        # Pula se a célula já estiver preenchida com um link do Bitrix
         if not num_pedido or "bitrix24" in link_atual: 
             continue
 
         try:
             endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
-            payload = {"filter": {"%TITLE": num_pedido}, "select": ["ID", "TITLE"]}
-            resp = requests.post(endpoint, json=payload, headers=headers_browser, timeout=10)
+            
+            # Envia via Query Parameters (formato nativo e mais aceito pela API de Webhook do Bitrix)
+            params = {
+                "filter[%TITLE%]": num_pedido,
+                "select[0]": "ID",
+                "select[1]": "TITLE"
+            }
+            
+            resp = requests.get(endpoint, params=params, timeout=10)
             
             if resp.status_code == 200:
                 tarefas = resp.json().get("result", {}).get("tasks", [])
@@ -90,7 +87,8 @@ def sincronizar_links_tarefas():
                 else:
                     print(f"⚠️ Nenhuma tarefa encontrada no Bitrix para o ID {num_pedido}", flush=True)
             else:
-                print(f"❌ Erro HTTP {resp.status_code} na API do Bitrix ao buscar {num_pedido}", flush=True)
+                # Imprime a resposta detalhada do Bitrix para sabermos exatamente o motivo do 401
+                print(f"❌ Erro HTTP {resp.status_code} no Bitrix ao buscar {num_pedido}. Resposta: {resp.text}", flush=True)
         except Exception as e:
             print(f"⚠️ Erro ao consultar Bitrix para {num_pedido}: {e}", flush=True)
 
