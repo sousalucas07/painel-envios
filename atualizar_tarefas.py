@@ -1,67 +1,84 @@
+import os
 import time
-from sheets import conectar_sheets, buscar_link_tarefa
+import requests
+from sheets import conectar_planilha_ativa
+
+def obter_bitrix_url():
+    try:
+        import streamlit as st
+        if "BITRIX_WEBHOOK_URL" in st.secrets:
+            return st.secrets["BITRIX_WEBHOOK_URL"]
+    except Exception:
+        pass
+    return os.getenv("BITRIX_WEBHOOK_URL", "")
 
 def sincronizar_links_tarefas():
-    print("\n🔍 Conectando à planilha para sincronizar e validar links de tarefas...", flush=True)
-    sheet = conectar_sheets()
-    
+    print("\n🔄 Conectando à planilha para sincronizar links de tarefas...", flush=True)
+    sheet = conectar_planilha_ativa()
     if not sheet:
-        print("❌ Não foi possível conectar à planilha.")
+        print("❌ Não foi possível conectar à planilha.", flush=True)
         return
 
-    # Pega todos os registros e o cabeçalho
-    registros = sheet.get_all_records()
-    cabecalho = sheet.row_values(1)
-
-    # Identifica dinamicamente o número da coluna 'TAREFA' e 'ID BITRIX'
-    col_tarefa_idx = None
-    col_id_idx = None
-
-    for idx, col in enumerate(cabecalho, start=1):
-        c_lower = col.strip().lower()
-        if "tarefa" in c_lower:
-            col_tarefa_idx = idx
-        elif "id" in c_lower or "pedido" in c_lower:
-            col_id_idx = idx
-
-    if not col_tarefa_idx or not col_id_idx:
-        print(f"❌ Não encontrei as colunas necessárias no cabeçalho: Tarefa (Col {col_tarefa_idx}), ID (Col {col_id_idx})")
+    try:
+        valores = sheet.get_all_values()
+        if not valores or len(valores) <= 1: return
+        cabecalho = [str(c).upper().strip() for c in valores[0]]
+    except Exception as e:
+        print(f"❌ Erro ao ler planilha: {e}", flush=True)
         return
 
-    print(f"📋 Coluna ID: {col_id_idx} | Coluna TAREFA: {col_tarefa_idx}")
-    print(f"Total de {len(registros)} linhas encontradas. Iniciando verificação completa com o Bitrix...\n")
+    idx_pedido = next((i + 1 for i, c in enumerate(cabecalho) if "PEDIDO" in c or "ID" in c or "BITRIX" in c), 2)
+    idx_tarefa = next((i + 1 for i, c in enumerate(cabecalho) if "TAREFA" in c), 3)
 
-    for index, row in enumerate(registros, start=2): # start=2 pois a linha 1 é o cabeçalho
-        id_pedido = ""
-        link_tarefa_atual = ""
+    linhas = valores[1:]
+    mudancas = 0
+    webhook_url = obter_bitrix_url()
 
-        for k, v in row.items():
-            k_lower = str(k).strip().lower()
-            if "id" in k_lower or "pedido" in k_lower:
-                id_pedido = str(v).strip()
-            elif "tarefa" in k_lower:
-                link_tarefa_atual = str(v).strip()
-
-        if not id_pedido:
-            print(f"⏩ Linha {index}: Sem ID do pedido. Pulando.")
+    # Headers simulando um navegador real para o Bitrix não bloquear IP de Datacenter (AWS)
+    headers_browser = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json"
+    }
+    
+    for index, row in enumerate(linhas, start=2):
+        num_pedido = str(row[idx_pedido - 1]).strip() if len(row) >= idx_pedido else ""
+        link_atual = str(row[idx_tarefa - 1]).strip() if len(row) >= idx_tarefa else ""
+        
+        # Pula se já estiver preenchido
+        if not num_pedido or "bitrix24" in link_atual: 
             continue
 
-        print(f"🔎 Linha {index} (ID: {id_pedido}): Verificando link no Bitrix...")
-        link_encontrado = buscar_link_tarefa(id_pedido)
+        link_encontrado = ""
+
+        # 1. Se o ID for puramente numérico (Ex: 85716), gera o link direto do Bitrix
+        if num_pedido.isdigit():
+            link_encontrado = f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{num_pedido}/"
+        
+        # 2. Se não for número puro, tenta a busca via API com User-Agent de navegador
+        elif webhook_url:
+            try:
+                endpoint = webhook_url.rstrip("/") + "/tasks.task.list.json"
+                payload = {"filter": {"%TITLE": num_pedido}, "select": ["ID", "TITLE"]}
+                resp = requests.post(endpoint, json=payload, headers=headers_browser, timeout=10)
+                if resp.status_code == 200:
+                    tarefas = resp.json().get("result", {}).get("tasks", [])
+                    for task in tarefas:
+                        if num_pedido in str(task.get("title", "")).upper():
+                            link_encontrado = f"https://despachante55.bitrix24.com.br/company/personal/user/0/tasks/task/view/{task.get('id')}/"
+                            break
+            except Exception as e:
+                print(f"⚠️ Erro ao consultar Bitrix para {num_pedido}: {e}", flush=True)
 
         if link_encontrado:
-            # COMPARAÇÃO: Atualiza a planilha APENAS se o link mudou ou se estava em branco
-            if link_encontrado != link_tarefa_atual:
-                sheet.update_cell(index, col_tarefa_idx, link_encontrado)
-                print(f"   🔄 Link alterado/atualizado na planilha: {link_encontrado}")
-            else:
-                print(f"   ✅ Link já está 100% atualizado e correto.")
-        else:
-            print(f"   ⚠️ Nenhuma tarefa encontrada no Bitrix para o ID {id_pedido}")
+            sheet.update_cell(index, idx_tarefa, link_encontrado)
+            print(f"✅ Tarefa {num_pedido} (Rossiane/outros) sincronizada!", flush=True)
+            mudancas += 1
+            time.sleep(0.3)
 
-        time.sleep(1) # Pausa para respeitar limite de requisições da API
-
-    print("\n🎉 Varredura e sincronização concluídas com sucesso!\n")
+    if mudancas == 0:
+        print("⚡ Nenhuma tarefa nova precisou ser sincronizada.", flush=True)
+    else:
+        print(f"✅ Sincronização concluída! {mudancas} links atualizados.", flush=True)
 
 if __name__ == "__main__":
     sincronizar_links_tarefas()
