@@ -43,6 +43,9 @@ def sincronizar_links_tarefas():
         num_pedido = str(row[idx_pedido - 1]).strip() if len(row) >= idx_pedido else ""
         link_atual = str(row[idx_tarefa - 1]).strip() if len(row) >= idx_tarefa else ""
         
+        # 📌 LOG DE DIAGNÓSTICO: Mostra no log exatamente o que a Nuvem leu na célula
+        print(f"🔍 Linha {index} ({num_pedido}): Link lido = '{link_atual}'", flush=True)
+
         # Pula se a célula já estiver preenchida com um link do Bitrix
         if not num_pedido or "bitrix24" in link_atual: 
             continue
