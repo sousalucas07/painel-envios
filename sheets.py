@@ -162,7 +162,7 @@ def registrar_envio_sheets(dados):
             str(dados.get("nome", "")),
             str(dados.get("tracking_code", "")),
             str(dados.get("tipo_envio", "")),
-            "GERADA / AGUARDANDO",
+            "AGUARDANDO ATUALIZAR STATUS",
             hoje,
         ]
         sheet_ativa.append_row(linha_publica)

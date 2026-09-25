@@ -26,7 +26,9 @@ jobs:
 
       - name: Criar credentials.json a partir do Secret do GitHub
         run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > credentials.json
+          cat << 'EOF' > credentials.json
+          ${{ secrets.GCP_CREDENTIALS_JSON }}
+          EOF
 
       - name: Executar rastreio da USPS
         env:
