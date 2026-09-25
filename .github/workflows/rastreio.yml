@@ -25,10 +25,10 @@ jobs:
           pip install -r requirements.txt
 
       - name: Criar credentials.json a partir do Secret do GitHub
+        env:
+          GCP_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
         run: |
-          cat << 'EOF' > credentials.json
-          ${{ secrets.GCP_CREDENTIALS_JSON }}
-          EOF
+          python -c "import os, json; json.dump(json.loads(os.environ['GCP_JSON']), open('credentials.json', 'w'))"
 
       - name: Executar rastreio da USPS
         env:
