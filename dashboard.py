@@ -362,12 +362,16 @@ with tab_dashboard:
 
             def estilo_linhas_atualizadas(df):
                 styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                for idx in df.index:
-                    if mask_atualizados.get(idx, False):
-                        styles.loc[idx, :] = (
-                            "background-color: #1b4332; color: #ffffff;"
-                            " font-weight: bold;"
-                        )
+                hoje_str = datetime.now().strftime("%Y-%m-%d")
+                
+                col_ult = next((c for c in df.columns if "ult" in c.lower() or "atualiz" in c.lower()), None)
+                
+                if col_ult:
+                    for idx in df.index:
+                        val_data = str(df.loc[idx, col_ult])
+                        if hoje_str in val_data:
+                            # Pinta a linha inteira com um verde sutil de destaque
+                            styles.loc[idx, :] = "background-color: #1b4332; color: #ffffff; font-weight: bold;"
                 return styles
 
             df_styled = df_final_render.style.apply(

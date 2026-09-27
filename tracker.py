@@ -87,12 +87,15 @@ def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=91734):
     """Cria uma tarefa urgente no Bitrix24 apenas quando algo dá errado."""
     if not deal_id: return
     url = f"{WEBHOOK_URL.rstrip('/')}/tasks.task.add.json"
+    prazo_hoje = datetime.now().strftime("%Y-%m-%d 18:00:00")
+    
     payload = {
         "fields": {
             "TITLE": titulo,
             "DESCRIPTION": descricao,
             "RESPONSIBLE_ID": responsavel_id,
-            "PRIORITY": 2,  # Prioridade Alta
+            "PRIORITY": 2,  
+            "DEADLINE": prazo_hoje,
             "UF_CRM_TASK": [f"D_{deal_id}"]
         }
     }
@@ -259,37 +262,37 @@ def rodar_monitoramento():
 
     print(f"✅ Monitoramento concluído! {mudancas} etiquetas atualizadas.", flush=True)
    
-# if __name__ == "__main__":
- #   rodar_monitoramento()
-
 if __name__ == "__main__":
-    DEAL_ID_TESTE = "86994"
-    SEU_TELEFONE = "5583991573227"  # O teu número de teste
+    # EXECUÇÃO DE PRODUÇÃO
+    rodar_monitoramento()
 
-    print(
-        f"\n🧪 INICIANDO TESTE CONTROLADO DA NOVA VERSÃO (NEGÓCIO"
-        f" #{DEAL_ID_TESTE})...\n"
-    )
-
-    # 1. Testar se o Python consegue ir ao Bitrix capturar o telefone
-    print("1️⃣ A buscar o telefone do contacto no Bitrix24...")
-    tel_bitrix = obter_telefone_bitrix(DEAL_ID_TESTE)
-    print(f"   📞 Telefone retornado pela API do Bitrix: {tel_bitrix}")
-
-    # Se a API não retornar telefone (ou se quiseres garantir), usa o SEU_TELEFONE
-    tel_destino = tel_bitrix if tel_bitrix else SEU_TELEFONE
-    print(f"   🎯 O WhatsApp de teste será enviado para: {tel_destino}\n")
-
-    # 2. Testar o disparo direto via WhatCRM
-    print("2️⃣ A disparar mensagem de teste de postagem via WhatCRM...")
-    mensagem_teste = (
-        "🧪 TESTE DA NOVA VERSÃO: O teu envelope foi coletado pela USPS e já"
-        " está a caminho! 🚚💨 (Disparo 100% Python)"
-    )
-
-    enviar_whatsapp_direto(tel_destino, mensagem_teste)
-
-    print(
-        "\n🏁 Teste concluído! Dá uma olhada no teu WhatsApp para confirmar o"
-        " recebimento!"
-    )   
+    # DEAL_ID_TESTE = "86994"
+    # SEU_TELEFONE = "5583991573227"  # O teu número de teste
+    #
+    # print(
+    #     f"\n🧪 INICIANDO TESTE CONTROLADO DA NOVA VERSÃO (NEGÓCIO"
+    #     f" #{DEAL_ID_TESTE})...\n"
+    # )
+    #
+    # # 1. Testar se o Python consegue ir ao Bitrix capturar o telefone
+    # print("1️⃣ A buscar o telefone do contacto no Bitrix24...")
+    # tel_bitrix = obter_telefone_bitrix(DEAL_ID_TESTE)
+    # print(f"   📞 Telefone retornado pela API do Bitrix: {tel_bitrix}")
+    #
+    # # Se a API não retornar telefone (ou se quiseres garantir), usa o SEU_TELEFONE
+    # tel_destino = tel_bitrix if tel_bitrix else SEU_TELEFONE
+    # print(f"   🎯 O WhatsApp de teste será enviado para: {tel_destino}\n")
+    #
+    # # 2. Testar o disparo direto via WhatCRM
+    # print("2️⃣ A disparar mensagem de teste de postagem via WhatCRM...")
+    # mensagem_teste = (
+    #     "🧪 TESTE DA NOVA VERSÃO: O teu envelope foi coletado pela USPS e já"
+    #     " está a caminho! 🚚💨 (Disparo 100% Python)"
+    # )
+    #
+    # enviar_whatsapp_direto(tel_destino, mensagem_teste)
+    #
+    # print(
+    #     "\n🏁 Teste concluído! Dá uma olhada no teu WhatsApp para confirmar o"
+    #     " recebimento!"
+    # )
