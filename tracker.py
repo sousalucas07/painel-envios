@@ -83,12 +83,12 @@ def obter_telefone_bitrix(deal_id):
 # ==============================================================================
 # INTEGRACÃO 2: CRIAR TAREFA DE ALERTA SE HOUVER ERRO/SLA
 # ==============================================================================
-def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=91734):
+def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=71104):
     """Cria uma tarefa urgente no Bitrix24 apenas quando algo dá errado."""
     if not deal_id: return
     url = f"{WEBHOOK_URL.rstrip('/')}/tasks.task.add.json"
     prazo_hoje = datetime.now().strftime("%Y-%m-%d 18:00:00")
-    
+
     payload = {
         "fields": {
             "TITLE": titulo,
