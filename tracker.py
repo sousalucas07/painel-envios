@@ -67,24 +67,42 @@ def limpar_telefone(telefone):
 # ==============================================================================
 def obter_telefone_bitrix(deal_id):
     """Consulta o Bitrix usando o ID do Negócio para retornar o WhatsApp do cliente."""
-    if not deal_id: return None
-    
+    if not deal_id:
+        return None
+
+    if not WEBHOOK_URL or not str(WEBHOOK_URL).startswith("http"):
+        print("   ⚠️ BITRIX_WEBHOOK_URL não configurada ou inválida nas Secrets!", flush=True)
+        return None
+
     try:
-        url_deal = f"{WEBHOOK_URL.rstrip('/')}/crm.deal.get.json"
-        res_deal = requests.get(url_deal, params={"id": deal_id}, timeout=10).json()
-        contact_id = res_deal.get("result", {}).get("CONTACT_ID")
-        
+        base_url = WEBHOOK_URL.rstrip('/')
+        url_deal = f"{base_url}/crm.deal.get.json"
+        res_deal = requests.get(url_deal, params={"id": deal_id}, timeout=10)
+
+        if res_deal.status_code != 200:
+            print(f"   ⚠️ Bitrix retornou HTTP {res_deal.status_code} ao buscar Negócio #{deal_id}", flush=True)
+            return None
+
+        data_deal = res_deal.json()
+        contact_id = data_deal.get("result", {}).get("CONTACT_ID")
+
         if not contact_id:
             print(f"   ⚠️ Negócio #{deal_id} sem Contato vinculado.", flush=True)
             return None
-        
-        url_contact = f"{WEBHOOK_URL.rstrip('/')}/crm.contact.get.json"
-        res_contact = requests.get(url_contact, params={"id": contact_id}, timeout=10).json()
-        phones = res_contact.get("result", {}).get("PHONE", [])
-        
+
+        url_contact = f"{base_url}/crm.contact.get.json"
+        res_contact = requests.get(url_contact, params={"id": contact_id}, timeout=10)
+
+        if res_contact.status_code != 200:
+            print(f"   ⚠️ Bitrix retornou HTTP {res_contact.status_code} ao buscar Contato #{contact_id}", flush=True)
+            return None
+
+        data_contact = res_contact.json()
+        phones = data_contact.get("result", {}).get("PHONE", [])
+
         if phones and len(phones) > 0:
             return limpar_telefone(phones[0].get("VALUE"))
-        
+
         print(f"   ⚠️ Contato #{contact_id} sem telefone cadastrado.", flush=True)
         return None
     except Exception as e:
@@ -96,8 +114,11 @@ def obter_telefone_bitrix(deal_id):
 # ==============================================================================
 def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=71104):
     """Cria uma tarefa urgente no Bitrix24 apenas quando algo dá errado."""
-    if not deal_id: return
-    url = f"{WEBHOOK_URL.rstrip('/')}/tasks.task.add.json"
+    if not deal_id or not WEBHOOK_URL or not str(WEBHOOK_URL).startswith("http"):
+        return
+
+    base_url = WEBHOOK_URL.rstrip('/')
+    url = f"{base_url}/tasks.task.add.json"
     prazo_hoje = datetime.now().strftime("%Y-%m-%d 18:00:00")
 
     payload = {
@@ -111,8 +132,11 @@ def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=71104):
         }
     }
     try:
-        requests.post(url, json=payload, timeout=10)
-        print(f"   🚨 Tarefa de Alerta gerada no Bitrix24: '{titulo}'", flush=True)
+        res = requests.post(url, json=payload, timeout=10)
+        if res.status_code == 200:
+            print(f"   🚨 Tarefa de Alerta gerada no Bitrix24: '{titulo}'", flush=True)
+        else:
+            print(f"   ⚠️ Falha ao criar tarefa no Bitrix (HTTP {res.status_code})", flush=True)
     except Exception as e:
         print(f"   ⚠️ Erro ao gerar tarefa no Bitrix: {e}", flush=True)
 
