@@ -47,8 +47,19 @@ def limpar_telefone(telefone):
     if not telefone: return ""
     numeros = re.sub(r'\D', '', str(telefone))
     if not numeros: return ""
+    
+    # Se já é número dos EUA completo (1 + 10 dígitos = 11 dígitos começando com 1)
+    if len(numeros) == 11 and numeros.startswith("1"):
+        return numeros
+
+    # Se já é número do Brasil com DDI (55 + 10 ou 11 dígitos)
+    if len(numeros) in [12, 13] and numeros.startswith("55"):
+        return numeros
+
+    # Se for número do Brasil sem DDI (10 ou 11 dígitos sem começar por 1)
     if len(numeros) in [10, 11]:
-        numeros = "55" + numeros
+        return "55" + numeros
+
     return numeros
 
 # ==============================================================================
