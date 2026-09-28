@@ -2,8 +2,8 @@ name: Automacao de Rastreio USPS
 
 on:
   schedule:
-    # Roda a cada 3 horas (00:00, 03:00, 06:00, etc)
-    - cron: '0 */3 * * *'
+    # Roda a cada 1 hora (00:00, 01:00, 02:00, etc)
+    - cron: '0 * * * *'
   workflow_dispatch: # Permite rodar manualmente na aba Actions do GitHub
 
 jobs:
@@ -19,21 +19,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar dependências
+      - name: Instalar dependências e Playwright
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          playwright install chromium
 
       - name: Criar credentials.json a partir do Secret do GitHub
         env:
           GCP_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
         run: |
-          python -c "import os, json; json.dump(json.loads(os.environ['GCP_JSON']), open('credentials.json', 'w'))"
+          echo "$GCP_JSON" > credentials.json
 
       - name: Executar rastreio da USPS
         env:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           SHIPPO_LIVE_KEY: ${{ secrets.SHIPPO_LIVE_KEY }}
           WHATCRM_TOKEN: ${{ secrets.WHATCRM_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python tracker.py

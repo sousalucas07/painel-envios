@@ -156,7 +156,11 @@ def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_even
         telefone_cliente = obter_telefone_bitrix(deal_id)
 
         if "DELIVERED" in status_upper:
-            msg = "Olá! Passando para avisar que o seu envelope foi entregue com sucesso! 🎉"
+            msg = """Olá xxxx, boa tarde. Tudo bom?
+
+            Verifiquei pelo link da USPS que o envelope chegou dia de hoje. 🎉
+
+            Você confirma esse recebimento?"""
             enviar_whatsapp_direto(telefone_cliente, msg)
             
         elif "ACCEPTED" in status_upper or "PICKED UP" in status_upper:
