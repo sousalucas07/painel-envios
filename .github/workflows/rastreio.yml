@@ -2,8 +2,8 @@ name: Automacao de Rastreio USPS
 
 on:
   schedule:
-    # Roda a cada 1 hora (00:00, 01:00, 02:00, etc)
-    - cron: '0 * * * *'
+    # Roda a cada 1 hora no minuto 17 (00:17, 01:17, 02:17, etc)
+    - cron: '17 * * * *'
   workflow_dispatch: # Permite rodar manualmente na aba Actions do GitHub
 
 jobs:
