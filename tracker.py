@@ -34,6 +34,65 @@ PALAVRAS_ERRO = [
     "NOTICE LEFT", "ATTEMPTED", "LOST", "MISSING", "DELAYED"
 ]
 
+# ==============================================================================
+# MENSAGENS E REGRAS DE WHATSAPP POR TRECHO DO ENVIO
+# ==============================================================================
+MSG_COLETADO = "Olá! Passando para avisar que o seu envelope foi coletado pela USPS e já está a caminho! 🚚💨 Qualquer novidade, volto a te avisar."
+
+MSG_CHEGOU_CLIENTE = """Olá, boa tarde. Tudo bom?
+
+Verifiquei pelo link da USPS que o envelope chegou hoje. 🎉
+
+Você confirma esse recebimento?"""
+
+MSG_CHEGOU_CONSULADO = """Olá, boa tarde. Tudo bom?
+
+Verifiquei pelo link da USPS que o documento chegou no consulado. 🎉
+
+Só atualizando mesmo. Vamos seguir acompanhando por aqui.
+
+Qualquer dúvida é só chamar."""
+
+# Para cada trecho: qual mensagem sai em cada evento ("coleta" = saiu pela USPS, "entrega" = chegou).
+# Trecho que não está aqui (ou sem mensagem para o evento) = NÃO avisa o cliente.
+REGRAS_WHATSAPP = {
+    # Escritório -> Cliente (IDA, e a ida do IDA + RETORNO): avisa na coleta e na entrega
+    "ESCRITORIO_CLIENTE": {"coleta": MSG_COLETADO, "entrega": MSG_CHEGOU_CLIENTE},
+    # Cliente -> Consulado: avisa só quando chega no consulado
+    "CLIENTE_CONSULADO": {"entrega": MSG_CHEGOU_CONSULADO},
+    # Consulado -> Cliente: avisa só quando chega na casa do cliente
+    "CONSULADO_CLIENTE": {"entrega": MSG_CHEGOU_CLIENTE},
+    # Cliente -> Escritório (RETORNO) e envios internos do escritório: nunca avisa
+    "RETORNO": {},
+    "INTERNO": {},
+}
+
+def classificar_envio(tipo_envio):
+    """Converte o valor da coluna 'tipo de envio' da planilha no trecho do envio."""
+    t = str(tipo_envio).upper().strip().replace(" ", "")
+
+    # Envios internos do escritório (ajuste as palavras se usar outro nome na planilha)
+    if any(p in t for p in ["DPT", "INTERNO", "ESCRIT"]):
+        return "INTERNO"
+
+    if t == "RETORNO":
+        return "RETORNO"
+
+    # Na ida + retorno, o rastreio cadastrado é o da ida (escritório -> cliente)
+    if t in ["IDA", "IDA+RETORNO"]:
+        return "ESCRITORIO_CLIENTE"
+
+    tem_cli_con = "CLI-CON" in t
+    tem_con_cli = "CON-CLI" in t
+
+    # Rótulo combinado "Cli - Con / Con - Cli": o rastreio cadastrado é o da ida (cliente -> consulado)
+    if tem_cli_con:
+        return "CLIENTE_CONSULADO"
+    if tem_con_cli:
+        return "CONSULADO_CLIENTE"
+
+    return "DESCONHECIDO"
+
 def obter_shippo_key():
     try:
         import streamlit as st
@@ -175,20 +234,22 @@ def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_even
         criar_tarefa_bitrix(deal_id, titulo, descricao)
         return
 
-    # REGRA 2: DISPARO DE WHATSAPP DIRETO
-    if "DELIVERED" in status_upper or "ACCEPTED" in status_upper or "PICKED UP" in status_upper:
-        telefone_cliente = obter_telefone_bitrix(deal_id)
+    # REGRA 2: DISPARO DE WHATSAPP (depende do trecho do envio)
+    if "DELIVERED" in status_upper:
+        evento = "entrega"
+    elif "ACCEPTED" in status_upper or "PICKED UP" in status_upper:
+        evento = "coleta"
+    else:
+        evento = None
 
-        if "DELIVERED" in status_upper:
-            msg = """Olá, boa tarde. Tudo bom?
+    if evento:
+        trecho = classificar_envio(tipo_envio)
+        msg = REGRAS_WHATSAPP.get(trecho, {}).get(evento)
 
-Verifiquei pelo link da USPS que o envelope chegou dia de hoje. 🎉
-
-Você confirma esse recebimento?"""
-            enviar_whatsapp_direto(telefone_cliente, msg)
-            
-        elif "ACCEPTED" in status_upper or "PICKED UP" in status_upper:
-            msg = "Olá! Passando para avisar que o seu envelope foi coletado pela USPS e já está a caminho! 🚚💨 Qualquer novidade, volto a te avisar."
+        if not msg:
+            print(f"   🔕 Tipo '{tipo_envio}' ({trecho}), evento '{evento}': sem WhatsApp ao cliente.", flush=True)
+        else:
+            telefone_cliente = obter_telefone_bitrix(deal_id)
             enviar_whatsapp_direto(telefone_cliente, msg)
 
     # REGRA 3: MONITORAMENTO DE SLA DE ENTREGA -> Criar Tarefa se estourar

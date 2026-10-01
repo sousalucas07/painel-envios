@@ -16,3 +16,4 @@ perfil_bot_usps/
 *.pdf
 relatorio_semanal.py
 teste_whatscrm.py
+teste_regras.py

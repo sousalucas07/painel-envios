@@ -431,6 +431,22 @@ with tab_inserir:
     st.markdown("Insira os dados de um envio antigo para ser monitorado.")
     st.markdown("---")
 
+    TIPO_COMBINADO = "Cli - Con / Con - Cli"
+
+    # O tipo fica FORA do form para a tela reagir à escolha (mostrar o campo da volta)
+    in_tipo = st.selectbox(
+        "Tipo de Envio:",
+        ["IDA", "RETORNO", "IDA + RETORNO", TIPO_COMBINADO],
+    )
+    is_combinado = in_tipo == TIPO_COMBINADO
+
+    if is_combinado:
+        st.info(
+            "ℹ️ Este tipo gera duas etiquetas. Informe o rastreio da ida e o"
+            " da volta: elas serão cadastradas em linhas separadas"
+            " (**Cli - Con** e **Con - Cli**)."
+        )
+
     with st.form("form_inserir_rastreio"):
         col1, col2 = st.columns(2)
         with col1:
@@ -442,12 +458,17 @@ with tab_inserir:
             )
         with col2:
             in_rastreio = st.text_input(
-                "Código de Rastreio USPS *", placeholder="Ex: 94055502..."
+                "Código de Rastreio USPS - IDA (Cli → Con) *"
+                if is_combinado
+                else "Código de Rastreio USPS *",
+                placeholder="Ex: 94055502...",
             )
-            in_tipo = st.selectbox(
-                "Tipo de Envio:",
-                ["IDA", "RETORNO", "IDA + RETORNO", "Cli - Con / Con - Cli"],
-            )
+            in_rastreio_volta = ""
+            if is_combinado:
+                in_rastreio_volta = st.text_input(
+                    "Código de Rastreio USPS - VOLTA (Con → Cli) *",
+                    placeholder="Ex: 94055502...",
+                )
             in_data_criacao = st.date_input("🗓️ Data de Criação da Etiqueta *")
 
         st.markdown("---")
@@ -460,23 +481,56 @@ with tab_inserir:
                 not in_pedido.strip()
                 or not in_nome.strip()
                 or not in_rastreio.strip()
+                or (is_combinado and not in_rastreio_volta.strip())
             ):
                 st.warning("⚠️ Preencha os campos obrigatórios (*).")
+            elif is_combinado and in_rastreio.strip() == in_rastreio_volta.strip():
+                st.warning(
+                    "⚠️ O rastreio da ida e o da volta não podem ser iguais."
+                )
             else:
+                # Monta a lista de etiquetas a cadastrar (1 linha, ou 2 no tipo combinado)
+                if is_combinado:
+                    envios = [
+                        (in_rastreio.strip(), "Cli - Con"),
+                        (in_rastreio_volta.strip(), "Con - Cli"),
+                    ]
+                else:
+                    envios = [(in_rastreio.strip(), in_tipo)]
+
                 with st.spinner("Adicionando à planilha..."):
                     data_formatada = in_data_criacao.strftime("%Y-%m-%d 00:00")
-                    dados_manuais = {
-                        "num_pedido": in_pedido.strip(),
-                        "nome": in_nome.strip(),
-                        "tracking_code": in_rastreio.strip(),
-                        "tipo_envio": in_tipo,
-                        "data_criacao": data_formatada,
-                    }
-                    if registrar_envio_sheets and registrar_envio_sheets(
-                        dados_manuais
-                    ):
-                        st.success(
-                            f"✅ Etiqueta de **{in_nome}** cadastrada com data"
-                            f" {in_data_criacao.strftime('%d/%m/%Y')}!"
+                    resultados = []
+                    for codigo, tipo in envios:
+                        dados_manuais = {
+                            "num_pedido": in_pedido.strip(),
+                            "nome": in_nome.strip(),
+                            "tracking_code": codigo,
+                            "tipo_envio": tipo,
+                            "data_criacao": data_formatada,
+                        }
+                        ok = bool(
+                            registrar_envio_sheets
+                            and registrar_envio_sheets(dados_manuais)
                         )
-                        st.balloons()
+                        resultados.append((tipo, ok))
+
+                falhas = [tipo for tipo, ok in resultados if not ok]
+                gravados = [tipo for tipo, ok in resultados if ok]
+
+                if not falhas:
+                    st.success(
+                        f"✅ Etiqueta de **{in_nome}** cadastrada"
+                        f" ({' + '.join(gravados)}) com data"
+                        f" {in_data_criacao.strftime('%d/%m/%Y')}!"
+                    )
+                    st.balloons()
+                else:
+                    msg_erro = f"❌ Falha ao cadastrar: {', '.join(falhas)}."
+                    if gravados:
+                        msg_erro += (
+                            f" Já foi gravado: {', '.join(gravados)}. Confira"
+                            " a planilha antes de tentar de novo para não"
+                            " duplicar."
+                        )
+                    st.error(msg_erro)
