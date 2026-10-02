@@ -1,10 +1,11 @@
 name: Automacao de Rastreio USPS
 
 on:
-  schedule:
-    # Roda a cada 1 hora no minuto 17 (00:17, 01:17, 02:17, etc)
-    - cron: '38 * * * *'
-  workflow_dispatch: # Permite rodar manualmente na aba Actions do GitHub
+  workflow_dispatch: # Disparado pelo cron-job.org e manualmente na aba Actions
+
+concurrency:
+  group: rastreio-usps
+  cancel-in-progress: false
 
 jobs:
   executar-tracker:
@@ -12,10 +13,10 @@ jobs:
 
     steps:
       - name: Baixar código do repositório
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
