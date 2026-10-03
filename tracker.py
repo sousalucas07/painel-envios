@@ -223,8 +223,12 @@ def enviar_whatsapp_direto(telefone, mensagem):
 # ==============================================================================
 # ENGINE DE REGRAS E PREDICADOS
 # ==============================================================================
-def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_evento_str=None):
-    status_upper = str(novo_status).upper()
+# Se o status ANTERIOR (da planilha) já começava com um destes, o envelope já saiu do pré-envio.
+PREFIXOS_JA_EM_MOVIMENTO = ("TRANSIT", "DELIVERED", "RETURNED", "FAILURE")
+
+def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_evento_str=None, status_anterior=""):
+    status_upper = str(novo_status).upper().strip()
+    anterior_upper = str(status_anterior).upper().strip()
     tipo_envio = str(tipo_envio).upper().strip()
 
     # REGRA 1: EXCEÇÕES E FALHAS USPS -> Criar Tarefa no Bitrix
@@ -235,10 +239,13 @@ def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_even
         return
 
     # REGRA 2: DISPARO DE WHATSAPP (depende do trecho do envio)
+    # "coleta" = PRIMEIRA vez que o rastreio sai do pré-envio e vira TRANSIT (qualquer texto do USPS:
+    #            "USPS in possession of item", "Accepted at...", "Picked Up"...). Só dispara uma vez.
+    # "entrega" = quando vira DELIVERED (e não repete se já estava entregue).
     if "DELIVERED" in status_upper:
-        evento = "entrega"
-    elif "ACCEPTED" in status_upper or "PICKED UP" in status_upper:
-        evento = "coleta"
+        evento = None if anterior_upper.startswith("DELIVERED") else "entrega"
+    elif status_upper.startswith("TRANSIT"):
+        evento = None if anterior_upper.startswith(PREFIXOS_JA_EM_MOVIMENTO) else "coleta"
     else:
         evento = None
 
@@ -356,7 +363,7 @@ def rodar_monitoramento():
             
             # 2. Executa Disparo de WhatsApp e/ou Alertas de Erro
             if deal_id:
-                processar_regras_automacao(deal_id, novo_status, tipo_envio, data_evento)
+                processar_regras_automacao(deal_id, novo_status, tipo_envio, data_evento, status_atual)
 
         time.sleep(0.2)
 
