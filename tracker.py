@@ -311,7 +311,7 @@ def consultar_shippo(tracking_code):
                 data_evento = datetime.now().strftime("%Y-%m-%d %H:%M")
 
             status_final = f"{status_macro} - {detalhe}" if detalhe else status_macro
-            return status_final if status_macro else "Em Trânsito", data_evento
+            return status_final if status_macro else "AGUARDANDO ATUALIZAR STATUS", data_evento
         return None, None
     except Exception:
         return None, None
