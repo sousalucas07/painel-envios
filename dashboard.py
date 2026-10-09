@@ -34,25 +34,10 @@ try:
 except ImportError:
     sincronizar_links_tarefas = None
 
-# Importa as funções da planilha, monitoramento e sincronização
 try:
-    from sheets import (
-        deletar_envio_sheets,
-        ler_envios_sheets,
-        registrar_envio_sheets,
-    )
+    from leitor_foto import renderizar_aba_foto
 except ImportError:
-    ler_envios_sheets = deletar_envio_sheets = registrar_envio_sheets = None
-
-try:
-    from tracker import rodar_monitoramento
-except ImportError:
-    rodar_monitoramento = None
-
-try:
-    from atualizar_tarefas import sincronizar_links_tarefas
-except ImportError:
-    sincronizar_links_tarefas = None
+    renderizar_aba_foto = None
 
 # Configuração da Página
 st.set_page_config(
@@ -67,9 +52,10 @@ if "ultima_visualizacao" not in st.session_state:
     st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
 
 # Cria as Abas do app
-tab_dashboard, tab_inserir = st.tabs([
+tab_dashboard, tab_inserir, tab_foto = st.tabs([
     "📊 Painel de Acompanhamento",
     "📥 Inserir Rastreio Antigo",
+    "📸 Adicionar Rastreio Passaporte",
 ])
 
 # ==========================================
@@ -534,3 +520,12 @@ with tab_inserir:
                             " duplicar."
                         )
                     st.error(msg_erro)
+
+# ==========================================
+# ABA 3: LER RASTREIOS POR FOTO (IA)
+# ==========================================
+with tab_foto:
+    if renderizar_aba_foto:
+        renderizar_aba_foto()
+    else:
+        st.error("❌ Módulo 'leitor_foto.py' não encontrado.")
