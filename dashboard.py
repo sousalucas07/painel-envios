@@ -1,3 +1,4 @@
+import hmac
 import os
 import time
 from datetime import datetime
@@ -46,6 +47,26 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ==========================================
+# LOGIN POR SENHA (DASHBOARD_SENHA no .env / Secrets)
+# ==========================================
+if not st.session_state.get("autenticado"):
+    senha_correta = os.getenv("DASHBOARD_SENHA", "")
+    st.title("🔒 Painel de Envios")
+    if not senha_correta:
+        st.error("❌ DASHBOARD_SENHA não configurada no .env / Secrets. Acesso bloqueado.")
+        st.stop()
+    with st.form("form_login"):
+        senha_digitada = st.text_input("Senha", type="password")
+        entrar = st.form_submit_button("Entrar")
+    if entrar:
+        if hmac.compare_digest(senha_digitada.encode(), senha_correta.encode()):
+            st.session_state["autenticado"] = True
+            st.rerun()
+        time.sleep(1)  # atrasa tentativas em massa
+        st.error("❌ Senha incorreta.")
+    st.stop()
 
 # Guarda o horário da última vez que o usuário visualizou/recarregou a tela
 if "ultima_visualizacao" not in st.session_state:
