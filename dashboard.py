@@ -40,6 +40,11 @@ try:
 except ImportError:
     renderizar_aba_foto = None
 
+try:
+    from label_passaporte import renderizar_label_passaporte
+except ImportError:
+    renderizar_label_passaporte = None
+
 # Configuração da Página
 st.set_page_config(
     page_title="Analytics Dashboard - USPS",
@@ -541,6 +546,11 @@ with tab_inserir:
                             " duplicar."
                         )
                     st.error(msg_erro)
+
+    # Preenchimento da Label 228 (passaporte): só gera o PNG, não cadastra nada
+    st.markdown("---")
+    if renderizar_label_passaporte:
+        renderizar_label_passaporte()
 
 # ==========================================
 # ABA 3: LER RASTREIOS POR FOTO (IA)
