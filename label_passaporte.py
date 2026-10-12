@@ -214,7 +214,7 @@ def renderizar_label_passaporte():
                 st.error("❌ Arquivo maior que 15 MB.")
             else:
                 try:
-                    with st.spinner("Lendo o endereço com o Gemini..."):
+                    with st.spinner("Lendo o endereço, aguarde..."):
                         dados = extrair_endereco(
                             texto_colado.strip(),
                             comprovante.getvalue() if comprovante else None,
