@@ -187,7 +187,7 @@ def extrair_endereco(texto="", arquivo_bytes=None, mime_type=None):
 # TELA (dentro da aba "Inserir Rastreio Antigo")
 # ==============================================================================
 def renderizar_label_passaporte():
-    with st.expander("🏷️ Preencher Label 228 (Passaporte)"):
+    with st.expander("🏷️ Preencher Label para o E-Consular"):
         consulado = st.selectbox(
             "Consulado (remetente - FROM):", sorted(ENDERECOS_CONSULADOS), key="label_consulado"
         )
