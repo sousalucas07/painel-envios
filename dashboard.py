@@ -224,7 +224,7 @@ with tab_dashboard:
                 "Pendentes de Envio": "#f9cdc8",
                 "Entregues": "#2ecc71",
                 "Em Trânsito": "#3498db",
-                "Outros": "#95a5a6",
+                "Erros": "#95a5a6",
             }
 
             with col_grafico1:
