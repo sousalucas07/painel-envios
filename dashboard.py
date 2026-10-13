@@ -164,7 +164,7 @@ with tab_dashboard:
 
             df_envios = df_envios.reset_index(drop=True)
 
-            df_envios["Categoria Status"] = "Outros"
+            df_envios["Categoria Status"] = "Erros"
             if col_status:
                 df_envios.loc[
                     df_envios[col_status]
