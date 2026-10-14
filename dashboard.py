@@ -164,7 +164,7 @@ with tab_dashboard:
 
             df_envios = df_envios.reset_index(drop=True)
 
-            df_envios["Categoria Status"] = "Erros"
+            df_envios["Categoria Status"] = "Erros / Atraso"
             if col_status:
                 df_envios.loc[
                     df_envios[col_status]
@@ -224,7 +224,7 @@ with tab_dashboard:
                 "Pendentes de Envio": "#f58174",
                 "Entregues": "#2ecc71",
                 "Em Trânsito": "#3498db",
-                "Erros": "#95a5a6",
+                "Erros / Atraso": "#95a5a6",
             }
 
             with col_grafico1:
