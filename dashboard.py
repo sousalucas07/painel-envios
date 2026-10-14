@@ -221,7 +221,7 @@ with tab_dashboard:
             col_grafico1, col_grafico2 = st.columns([1, 1])
 
             cores_status = {
-                "Pendentes de Envio": "#f9cdc8",
+                "Pendentes de Envio": "#f58174",
                 "Entregues": "#2ecc71",
                 "Em Trânsito": "#3498db",
                 "Erros": "#95a5a6",
