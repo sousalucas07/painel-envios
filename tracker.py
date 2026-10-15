@@ -317,7 +317,7 @@ def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criaca
     prazo, dias = atraso
     criar_tarefa_bitrix(
         deal_id,
-        f"⚠️ ALERTA SLA (+{prazo} dias): {tipo_envio} - Negócio #{deal_id} - {rastreio}",
+        f"⚠️ ALERTA (+{prazo} dias): {tipo_envio} - Negócio #{deal_id} - {rastreio}",
         f"Envio {tipo_envio} sem entrega há {dias} dias (prazo: {prazo}).\nStatus atual: {status}",
     )
 
