@@ -18,12 +18,12 @@ except Exception:
 # Importa as funções da planilha, monitoramento e sincronização
 try:
     from sheets import (
-        deletar_envio_sheets,
+        deletar_envios_sheets,
         ler_envios_sheets,
         registrar_envio_sheets,
     )
 except ImportError:
-    ler_envios_sheets = deletar_envio_sheets = registrar_envio_sheets = None
+    ler_envios_sheets = deletar_envios_sheets = registrar_envio_sheets = None
 
 try:
     from tracker import rodar_monitoramento
@@ -44,6 +44,11 @@ try:
     from label_passaporte import renderizar_label_passaporte
 except ImportError:
     renderizar_label_passaporte = None
+
+try:
+    from emissao_shippo import renderizar_aba_emissao
+except ImportError:
+    renderizar_aba_emissao = None
 
 # Configuração da Página
 st.set_page_config(
@@ -78,7 +83,8 @@ if "ultima_visualizacao" not in st.session_state:
     st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
 
 # Cria as Abas do app
-tab_dashboard, tab_inserir, tab_foto = st.tabs([
+tab_emissao, tab_dashboard, tab_inserir, tab_foto = st.tabs([
+    "📦 Emitir Etiquetas",
     "📊 Painel de Acompanhamento",
     "📥 Inserir Rastreio Antigo",
     "📸 Adicionar Rastreio Passaporte",
@@ -400,36 +406,50 @@ with tab_dashboard:
                 column_config=config_colunas,
                 disabled=colunas_bloqueadas,
                 hide_index=True,
-                key="tabela_historico_editor",
+                # Chave muda com o filtro e após cada exclusão: a marcação do "Excluir"
+                # fica presa à posição na tabela e cairia em outra linha
+                key=(
+                    "tabela_historico_editor_"
+                    f"{filtro_selecionado}_{st.session_state.get('versao_tabela', 0)}"
+                ),
             )
 
             linhas_marcadas = tabela_editada[tabela_editada["Excluir"] == True]
 
             if not linhas_marcadas.empty:
-                pedidos_para_apagar = (
-                    linhas_marcadas[col_id].astype(str).tolist()
+                col_tipo = next(
+                    (c for c in linhas_marcadas.columns if "tipo" in c.lower()), None
                 )
+                descricoes = [
+                    f"#{linha[col_id] if col_id else '?'}"
+                    + (f" {linha[col_tipo]}" if col_tipo else "")
+                    + f" (…{str(linha[col_rastreio])[-6:]})"
+                    for _, linha in linhas_marcadas.iterrows()
+                ]
                 st.warning(
-                    "⚠️ Pedidos selecionados para exclusão:"
-                    f" **{', '.join(pedidos_para_apagar)}**"
+                    "⚠️ Selecionados para exclusão:"
+                    f" **{', '.join(descricoes)}**"
                 )
 
                 if st.button(
                     "🗑️ Confirmar Exclusão dos Selecionados", type="primary"
                 ):
-                    com_sucesso = True
-                    for pid in pedidos_para_apagar:
-                        if deletar_envio_sheets:
-                            if not deletar_envio_sheets(pid):
-                                com_sucesso = False
+                    nao_achados = deletar_envios_sheets(
+                        linhas_marcadas[col_rastreio].astype(str).tolist()
+                    )
+                    st.session_state["versao_tabela"] = (
+                        st.session_state.get("versao_tabela", 0) + 1
+                    )
 
-                    if com_sucesso:
+                    if not nao_achados:
                         st.success("✅ Registos excluídos com sucesso!")
                         time.sleep(1)
                         st.rerun()
                     else:
                         st.error(
-                            "❌ Ocorreu um erro ao excluir algum dos registos."
+                            "❌ Não foi possível excluir os rastreios"
+                            f" {', '.join(nao_achados)}. Recarregue a tela e"
+                            " confira a planilha."
                         )
 
         else:
@@ -443,20 +463,25 @@ with tab_inserir:
     st.markdown("Insira os dados de um envio antigo para ser monitorado.")
     st.markdown("---")
 
-    TIPO_COMBINADO = "Cli - Con / Con - Cli"
+    # Tipos com duas etiquetas: (tipo da ida, rótulo da ida, tipo da volta, rótulo da volta)
+    TIPOS_PAR = {
+        "IDA + RETORNO": ("IDA", "Esc → Cli", "RETORNO", "Cli → Esc"),
+        "Cli - Con / Con - Cli": ("Cli - Con", "Cli → Con", "Con - Cli", "Con → Cli"),
+    }
 
     # O tipo fica FORA do form para a tela reagir à escolha (mostrar o campo da volta)
     in_tipo = st.selectbox(
         "Tipo de Envio:",
-        ["IDA", "RETORNO", "IDA + RETORNO", TIPO_COMBINADO],
+        ["IDA", "RETORNO", *TIPOS_PAR],
     )
-    is_combinado = in_tipo == TIPO_COMBINADO
+    par = TIPOS_PAR.get(in_tipo)
+    is_combinado = bool(par)
 
     if is_combinado:
         st.info(
             "ℹ️ Este tipo gera duas etiquetas. Informe o rastreio da ida e o"
             " da volta: elas serão cadastradas em linhas separadas"
-            " (**Cli - Con** e **Con - Cli**)."
+            f" (**{par[0]}** e **{par[2]}**)."
         )
 
     with st.form("form_inserir_rastreio"):
@@ -470,7 +495,7 @@ with tab_inserir:
             )
         with col2:
             in_rastreio = st.text_input(
-                "Código de Rastreio USPS - IDA (Cli → Con) *"
+                f"Código de Rastreio USPS - IDA ({par[1]}) *"
                 if is_combinado
                 else "Código de Rastreio USPS *",
                 placeholder="Ex: 94055502...",
@@ -478,7 +503,7 @@ with tab_inserir:
             in_rastreio_volta = ""
             if is_combinado:
                 in_rastreio_volta = st.text_input(
-                    "Código de Rastreio USPS - VOLTA (Con → Cli) *",
+                    f"Código de Rastreio USPS - VOLTA ({par[3]}) *",
                     placeholder="Ex: 94055502...",
                 )
             in_data_criacao = st.date_input("🗓️ Data de Criação da Etiqueta *")
@@ -504,8 +529,8 @@ with tab_inserir:
                 # Monta a lista de etiquetas a cadastrar (1 linha, ou 2 no tipo combinado)
                 if is_combinado:
                     envios = [
-                        (in_rastreio.strip(), "Cli - Con"),
-                        (in_rastreio_volta.strip(), "Con - Cli"),
+                        (in_rastreio.strip(), par[0]),
+                        (in_rastreio_volta.strip(), par[2]),
                     ]
                 else:
                     envios = [(in_rastreio.strip(), in_tipo)]
@@ -560,3 +585,12 @@ with tab_foto:
         renderizar_aba_foto()
     else:
         st.error("❌ Módulo 'leitor_foto.py' não encontrado.")
+
+# ==========================================
+# ABA 4: EMISSÃO DE ETIQUETAS (SHIPPO)
+# ==========================================
+with tab_emissao:
+    if renderizar_aba_emissao:
+        renderizar_aba_emissao()
+    else:
+        st.error("❌ Módulo 'emissao_shippo.py' não encontrado.")

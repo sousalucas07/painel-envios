@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
@@ -176,7 +177,7 @@ def registrar_envio_sheets(dados):
                 str(dados.get("nome", "")),
                 str(dados.get("tracking_code", "")),
                 str(dados.get("tipo_envio", "")),
-                0.01,
+                dados.get("custo", 0.01),
             ]
             sheet_privada.append_row(linha_privada)
         except Exception as err_priv:
@@ -188,16 +189,57 @@ def registrar_envio_sheets(dados):
         return False
 
 
-def deletar_envio_sheets(num_pedido):
-    sheet = conectar_planilha_ativa()
-    if not sheet:
+def registrar_reembolso_sheets(dados):
+    """Lança o reembolso só na planilha de auditoria (custo negativo)."""
+    client = conectar_client()
+    if not client:
         return False
     try:
-        celula = sheet.find(str(num_pedido))
-        if celula:
-            sheet.delete_rows(celula.row)
-            return True
-        return False
+        client.open_by_key(ID_PLANILHA_AUDITORIA).get_worksheet(0).append_row([
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            str(dados.get("num_pedido", "")),
+            str(dados.get("nome", "")),
+            str(dados.get("tracking_code", "")),
+            str(dados.get("tipo_envio", "")),
+            dados.get("custo", 0),
+        ])
+        return True
     except Exception as e:
-        print(f"❌ Erro ao deletar registro: {e}")
+        print(f"❌ Erro ao registrar reembolso na auditoria: {e}")
         return False
+
+
+def deletar_envios_sheets(rastreios):
+    """Apaga as linhas cujo rastreio (só dígitos, link ou código) está em `rastreios`.
+
+    O rastreio identifica a linha: o nº do pedido se repete (IDA + RETORNO etc.).
+    Devolve a lista de rastreios que NÃO foram encontrados (vazia = tudo apagado).
+    """
+    alvos = {re.sub(r"\D", "", str(r)) for r in rastreios} - {""}
+    sheet = conectar_planilha_ativa()
+    if not sheet:
+        return sorted(alvos)
+    try:
+        valores = sheet.get_all_values()
+        cabecalho = [str(c).upper() for c in valores[0]] if valores else []
+        idx = next(
+            (i for i, c in enumerate(cabecalho) if "RASTREIO" in c or "TRACKING" in c), None
+        )
+        if idx is None:
+            print("❌ Coluna de rastreio não encontrada na planilha.")
+            return sorted(alvos)
+
+        linhas = [
+            n
+            for n, linha in enumerate(valores[1:], start=2)
+            if len(linha) > idx and re.sub(r"\D", "", linha[idx]) in alvos
+        ]
+        # De baixo para cima: apagar uma linha não muda o número das que estão acima
+        for n in sorted(linhas, reverse=True):
+            sheet.delete_rows(n)
+
+        achados = {re.sub(r"\D", "", valores[n - 1][idx]) for n in linhas}
+        return sorted(alvos - achados)
+    except Exception as e:
+        print(f"❌ Erro ao deletar registros: {e}")
+        return sorted(alvos)

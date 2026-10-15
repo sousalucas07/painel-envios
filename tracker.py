@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from sheets import conectar_planilha_ativa as conectar_planilha
 
@@ -259,22 +259,67 @@ def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_even
             telefone_cliente = obter_telefone_bitrix(deal_id)
             enviar_whatsapp_direto(telefone_cliente, msg)
 
-    # REGRA 3: MONITORAMENTO DE SLA DE ENTREGA -> Criar Tarefa se estourar
-    if data_evento_str:
+# ==============================================================================
+# SLA: TAREFA NO BITRIX QUANDO O ENVIO PASSA DO PRAZO (checado em TODO ciclo)
+# ==============================================================================
+# trecho -> (dias, a partir de quando conta)
+#   "saida"   = 1º evento da USPS depois do pré-envio (tempo parado em PRE_TRANSIT não conta)
+#   "criacao" = coluna DATA (passaporte: a etiqueta fica em pré-envio até o consulado postar)
+# Trecho fora daqui (RETORNO interno, D55 - DPT etc.) não tem prazo.
+PRAZOS_SLA = {
+    "ESCRITORIO_CLIENTE": (7, "saida"),
+    "RETORNO": (30, "saida"),
+    "CLIENTE_CONSULADO": (10, "saida"),
+    "CONSULADO_CLIENTE": (70, "criacao"),
+}
+
+def tarefa_sla_existe(rastreio):
+    """Já existe tarefa de SLA para este rastreio no Bitrix? Na dúvida responde True (não duplica)."""
+    try:
+        res = requests.post(
+            f"{WEBHOOK_URL.rstrip('/')}/tasks.task.list.json",
+            json={"filter": {"%TITLE": rastreio}, "select": ["ID", "TITLE"]},
+            timeout=10,
+        )
+        res.raise_for_status()
+        tarefas = res.json().get("result", {}).get("tasks", [])
+        return any("ALERTA SLA" in str(t.get("title", "")).upper() for t in tarefas)
+    except Exception as e:
+        print(f"   ⚠️ Não consegui checar tarefas de SLA no Bitrix ({type(e).__name__}); alerta adiado.", flush=True)
+        return True
+
+def dias_atrasado(tipo_envio, status, data_saida, data_criacao_str, agora=None):
+    """Devolve (prazo, dias) se o envio estourou o prazo, senão None. Função pura (testável)."""
+    status_upper = str(status).upper()
+    if "DELIVERED" in status_upper or any(p in status_upper for p in PALAVRAS_ERRO):
+        return None  # entregue, ou a exceção da USPS já gerou tarefa própria
+    regra = PRAZOS_SLA.get(classificar_envio(tipo_envio))
+    if not regra:
+        return None
+    prazo, base = regra
+    agora = agora or datetime.now(timezone.utc)
+    if base == "saida":
+        inicio = data_saida
+    else:
         try:
-            dt_evento = datetime.strptime(data_evento_str, "%Y-%m-%d %H:%M")
-            dias_decorridos = (datetime.now() - dt_evento).days
+            inicio = datetime.fromisoformat(str(data_criacao_str).strip()).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    if not inicio:
+        return None  # ainda em pré-envio
+    dias = (agora - inicio).days
+    return (prazo, dias) if dias > prazo else None
 
-            if tipo_envio == "IDA" and "DELIVERED" not in status_upper and dias_decorridos > 7:
-                criar_tarefa_bitrix(deal_id, f"⚠️ ALERTA SLA (+7 dias): Envio IDA - Negócio #{deal_id}", f"Envio em trânsito há {dias_decorridos} dias.")
-
-            elif tipo_envio in ["RETORNO", "CONSULADO"] and "DELIVERED" not in status_upper and dias_decorridos > 30:
-                criar_tarefa_bitrix(deal_id, f"⚠️ ALERTA SLA (+30 dias): Envio {tipo_envio} - Negócio #{deal_id}", f"Envio ultrapassou 30 dias.")
-
-            elif tipo_envio == "PASSAPORTE" and "DELIVERED" not in status_upper and dias_decorridos > 70:
-                criar_tarefa_bitrix(deal_id, f"⚠️ ALERTA SLA (+70 dias): Passaporte - Negócio #{deal_id}", f"Prazo de 70 dias expirado.")
-        except Exception:
-            pass
+def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criacao_str):
+    atraso = dias_atrasado(tipo_envio, status, data_saida, data_criacao_str)
+    if not atraso or not deal_id or tarefa_sla_existe(rastreio):
+        return
+    prazo, dias = atraso
+    criar_tarefa_bitrix(
+        deal_id,
+        f"⚠️ ALERTA SLA (+{prazo} dias): {tipo_envio} - Negócio #{deal_id} - {rastreio}",
+        f"Envio {tipo_envio} sem entrega há {dias} dias (prazo: {prazo}).\nStatus atual: {status}",
+    )
 
 # ==============================================================================
 # CONSULTAS SHIPPO E PLANILHA
@@ -286,7 +331,7 @@ def extrair_apenas_numeros_rastreio(texto):
 
 def consultar_shippo(tracking_code):
     shippo_key = obter_shippo_key()
-    if not shippo_key: return None, None
+    if not shippo_key: return None, None, None
 
     url = "https://api.goshippo.com/tracks/"
     headers = {"Authorization": f"ShippoToken {shippo_key}", "Content-Type": "application/json"}
@@ -310,11 +355,21 @@ def consultar_shippo(tracking_code):
             else:
                 data_evento = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+            # 1º evento fora do pré-envio = quando a USPS recebeu o envelope (base do SLA)
+            data_saida = min(
+                (
+                    datetime.fromisoformat(str(e["status_date"]).replace("Z", "+00:00"))
+                    for e in data.get("tracking_history") or []
+                    if e.get("status_date") and e.get("status") not in ("PRE_TRANSIT", "UNKNOWN")
+                ),
+                default=None,
+            )
+
             status_final = f"{status_macro} - {detalhe}" if detalhe else status_macro
-            return status_final if status_macro else "AGUARDANDO ATUALIZAR STATUS", data_evento
-        return None, None
+            return status_final if status_macro else "AGUARDANDO ATUALIZAR STATUS", data_evento, data_saida
+        return None, None, None
     except Exception:
-        return None, None
+        return None, None, None
 
 def rodar_monitoramento():
     print("\n🚀 INICIANDO MONITORAMENTO AUTOMÁTICO (SHIPPO + WHATCRM)...", flush=True)
@@ -335,6 +390,7 @@ def rodar_monitoramento():
     idx_nome = next((i + 1 for i, c in enumerate(cabecalho) if "NOME" in c), 4)
     idx_deal = next((i + 1 for i, c in enumerate(cabecalho) if "ID" in c or "DEAL" in c or "NEGOCIO" in c), None)
     idx_tipo = next((i + 1 for i, c in enumerate(cabecalho) if "TIPO" in c or "ENVIO" in c), None)
+    idx_data = next((i + 1 for i, c in enumerate(cabecalho) if c == "DATA"), None)
 
     linhas = valores[1:]
     mudancas = 0
@@ -346,12 +402,13 @@ def rodar_monitoramento():
         nome = str(row[idx_nome - 1]) if len(row) >= idx_nome else "Cliente"
         deal_id = str(row[idx_deal - 1]).strip() if idx_deal and len(row) >= idx_deal else ""
         tipo_envio = str(row[idx_tipo - 1]).strip() if idx_tipo and len(row) >= idx_tipo else "IDA"
+        data_criacao = str(row[idx_data - 1]).strip() if idx_data and len(row) >= idx_data else ""
 
         tracking_code = extrair_apenas_numeros_rastreio(rastreio)
         if not tracking_code: continue
 
         print(f"🔎 Checando linha {index} ({nome})...", flush=True)
-        novo_status, data_evento = consultar_shippo(tracking_code)
+        novo_status, data_evento, data_saida = consultar_shippo(tracking_code)
 
         if novo_status and novo_status.upper() != status_atual.upper():
             print(f"   ✨ Mudança Detectada: '{status_atual}' ➔ '{novo_status}'", flush=True)
@@ -364,6 +421,10 @@ def rodar_monitoramento():
             # 2. Executa Disparo de WhatsApp e/ou Alertas de Erro
             if deal_id:
                 processar_regras_automacao(deal_id, novo_status, tipo_envio, data_evento, status_atual)
+
+        # 3. SLA: todo ciclo, mesmo sem mudança (envelope parado é justamente o caso do alerta)
+        if novo_status:
+            verificar_sla(deal_id, tracking_code, tipo_envio, novo_status, data_saida, data_criacao)
 
         time.sleep(0.2)
 
