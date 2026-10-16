@@ -283,7 +283,7 @@ def tarefa_sla_existe(rastreio):
         )
         res.raise_for_status()
         tarefas = res.json().get("result", {}).get("tasks", [])
-        return any("ALERTA SLA" in str(t.get("title", "")).upper() for t in tarefas)
+        return any("ALERTA (+" in str(t.get("title", "")).upper() for t in tarefas)
     except Exception as e:
         print(f"   ⚠️ Não consegui checar tarefas de SLA no Bitrix ({type(e).__name__}); alerta adiado.", flush=True)
         return True
