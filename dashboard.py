@@ -52,7 +52,7 @@ except ImportError:
 
 # Configuração da Página
 st.set_page_config(
-    page_title="Analytics Dashboard - USPS",
+    page_title="Envios Despa55 - USPS",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
