@@ -140,8 +140,8 @@ def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao
         enderecos["CLI"] = cliente
     if consulado:
         enderecos["CON"] = endereco_consulado(consulado)
-    if departamento:
-        enderecos["DPT"] = endereco_departamento(departamento)
+    if departamento:  # nome de DEPARTAMENTOS_ESTADO ou endereço digitado (dict)
+        enderecos["DPT"] = departamento if isinstance(departamento, dict) else endereco_departamento(departamento)
 
     etiquetas = []
     for tipo, de, para in MODOS[modo]:
@@ -279,21 +279,16 @@ def renderizar_aba_emissao():
     num_pedido = col_pedido.text_input("Número do Pedido / ID Bitrix *", key="emi_pedido").strip()
     modo = col_modo.radio("Tipo de Envio:", list(MODOS), horizontal=True, key="emi_modo")
 
-    consulado = departamento = None
-    if "CON" in {e for _, de, para in MODOS[modo] for e in (de, para)}:
-        consulado = st.selectbox("🏛️ Consulado:", sorted(ENDERECOS_CONSULADOS), key="emi_consulado")
-    if modo.startswith("D55"):
-        departamento = st.selectbox("🏛️ Departamento de Estado:", sorted(DEPARTAMENTOS_ESTADO), key="emi_dpt")
-
-    # 1) Endereço do cliente: IA preenche, a pessoa confere antes de comprar
-    precisa_cliente = not modo.startswith("D55")
-    if precisa_cliente:
+    def _bloco_endereco(prefixo, rotulo):
+        """Documento ou texto -> IA preenche os campos -> a pessoa confere. Devolve (dados, faltando)."""
         comprovante = st.file_uploader(
-            "Comprovante de residência do cliente",
-            type=["jpg", "jpeg", "png", "webp", "pdf"], key="emi_comprovante",
+            f"Comprovante / documento com o endereço {rotulo}",
+            type=["jpg", "jpeg", "png", "webp", "pdf"], key=f"{prefixo}comprovante",
         )
-        texto = st.text_area("...ou cole aqui o nome e o endereço do cliente", max_chars=1000, key="emi_texto")
-        if st.button("🧠 Ler endereço", disabled=not (comprovante or texto.strip())):
+        texto = st.text_area(
+            f"...ou cole aqui o nome e o endereço {rotulo}", max_chars=1000, key=f"{prefixo}texto",
+        )
+        if st.button("🧠 Ler endereço", disabled=not (comprovante or texto.strip()), key=f"{prefixo}ler"):
             if comprovante and comprovante.size > TAMANHO_MAX_FOTO:
                 st.error("❌ Arquivo maior que 15 MB.")
             else:
@@ -305,30 +300,55 @@ def renderizar_aba_emissao():
                             comprovante.type if comprovante else None,
                         )
                     for c in CAMPOS_CLIENTE:
-                        st.session_state[f"emi_cli_{c}"] = dados[c]
+                        st.session_state[f"{prefixo}{c}"] = dados[c]
                 except Exception as e:
                     st.error(f"❌ Falha na leitura ({type(e).__name__}: {e})")
 
         st.caption("Confira e corrija antes de comprar:")
         cols = st.columns(3)
         for i, c in enumerate(CAMPOS_CLIENTE):
-            cols[i % 3].text_input(c.capitalize(), key=f"emi_cli_{c}")
-        cliente_dados = {c: st.session_state.get(f"emi_cli_{c}", "").strip() for c in CAMPOS_CLIENTE}
-        faltando = [c for c in CAMPOS_OBRIGATORIOS if not cliente_dados[c]]
+            cols[i % 3].text_input(c.capitalize(), key=f"{prefixo}{c}")
+        dados = {c: st.session_state.get(f"{prefixo}{c}", "").strip() for c in CAMPOS_CLIENTE}
+        return dados, [c for c in CAMPOS_OBRIGATORIOS if not dados[c]]
+
+    OUTRO_DPT = "✏️ Outro endereço (digitar)"
+    consulado = departamento = None
+    faltando = []
+    if "CON" in {e for _, de, para in MODOS[modo] for e in (de, para)}:
+        consulado = st.selectbox("🏛️ Consulado:", sorted(ENDERECOS_CONSULADOS), key="emi_consulado")
+    if modo.startswith("D55"):
+        departamento = st.selectbox(
+            "🏛️ Departamento de Estado:", sorted(DEPARTAMENTOS_ESTADO) + [OUTRO_DPT], key="emi_dpt",
+        )
+        if departamento == OUTRO_DPT:
+            dpt_dados, faltando = _bloco_endereco("emi_dpt_", "do departamento")
+            departamento = endereco_cliente(dpt_dados)  # emitir() aceita o endereço já montado
+
+    # 1) Endereço do cliente: IA preenche, a pessoa confere antes de comprar
+    if not modo.startswith("D55"):
+        cliente_dados, faltando = _bloco_endereco("emi_cli_", "do cliente")
     else:
-        cliente_dados, faltando = None, []
+        cliente_dados = None
 
     # 2) Trava contra etiqueta duplicada (mesmo pedido + tipo já na planilha)
     tipos = [t for t, _, _ in MODOS[modo]]
     repetidas = _ja_emitidas(ler_envios_sheets(), num_pedido, tipos) if num_pedido else []
     forcar = False
+    if repetidas:
+        st.warning(f"⚠️ O pedido {num_pedido} já tem etiqueta {', '.join(repetidas)} na planilha.")
+        forcar = st.checkbox("Emitir mesmo assim (vai cobrar de novo)", key="emi_forcar")
 
     pronto = num_pedido.isdigit() and not faltando and (not repetidas or forcar)
     if faltando:
         st.caption(f"Faltando: {', '.join(faltando)}")
 
     if st.button(f"💳 Comprar {len(tipos)} etiqueta(s)", type="primary", disabled=not pronto, use_container_width=True):
-        nome = cliente_dados["nome"].upper() if cliente_dados else f"DPT {departamento}"
+        if cliente_dados:
+            nome = cliente_dados["nome"].upper()
+        elif isinstance(departamento, dict):
+            nome = departamento["name"]
+        else:
+            nome = f"DPT {departamento}"
 
         etiquetas = []
 
