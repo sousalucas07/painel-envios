@@ -322,9 +322,6 @@ def renderizar_aba_emissao():
     tipos = [t for t, _, _ in MODOS[modo]]
     repetidas = _ja_emitidas(ler_envios_sheets(), num_pedido, tipos) if num_pedido else []
     forcar = False
-    if repetidas:
-        st.warning(f"⚠️ O pedido {num_pedido} já tem etiqueta {', '.join(repetidas)} na planilha.")
-        forcar = st.checkbox("Emitir mesmo assim (vai cobrar de novo)", key="emi_forcar")
 
     pronto = num_pedido.isdigit() and not faltando and (not repetidas or forcar)
     if faltando:
