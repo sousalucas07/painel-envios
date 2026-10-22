@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 import gspread
@@ -9,6 +10,13 @@ import requests
 import streamlit as st
 
 load_dotenv()
+
+# Quem usa a planilha está no Brasil: todo horário gravado vai no fuso de Brasília
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
+
+def agora_br():
+    return datetime.now(FUSO_BR)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -145,7 +153,7 @@ def registrar_envio_sheets(dados):
     if not client:
         return False
 
-    hoje = datetime.now().strftime("%Y-%m-%d %H:%M")
+    hoje = agora_br().strftime("%Y-%m-%d %H:%M")
 
     # Se uma data de criação específica for informada (ex: etiqueta antiga), usa ela.
     data_criacao_etiqueta = dados.get("data_criacao") or hoje
@@ -196,7 +204,7 @@ def registrar_reembolso_sheets(dados):
         return False
     try:
         client.open_by_key(ID_PLANILHA_AUDITORIA).get_worksheet(0).append_row([
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            agora_br().strftime("%Y-%m-%d %H:%M"),
             str(dados.get("num_pedido", "")),
             str(dados.get("nome", "")),
             str(dados.get("tracking_code", "")),

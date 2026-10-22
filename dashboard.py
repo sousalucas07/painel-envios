@@ -2,6 +2,7 @@ import hmac
 import os
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -78,9 +79,17 @@ if not st.session_state.get("autenticado"):
         st.error("❌ Senha incorreta.")
     st.stop()
 
+# Horários da planilha estão no fuso de Brasília
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
+
+def agora_br_ts():
+    return pd.Timestamp.now(tz=FUSO_BR).tz_localize(None)
+
+
 # Guarda o horário da última vez que o usuário visualizou/recarregou a tela
 if "ultima_visualizacao" not in st.session_state:
-    st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
+    st.session_state["ultima_visualizacao"] = agora_br_ts()
 
 # Cria as Abas do app
 tab_emissao, tab_dashboard, tab_inserir, tab_foto = st.tabs([
@@ -102,7 +111,7 @@ with tab_dashboard:
     with col_btn:
         st.write("")
         if st.button("🔄 Recarregar Tela", use_container_width=True):
-            st.session_state["ultima_visualizacao"] = pd.Timestamp.now()
+            st.session_state["ultima_visualizacao"] = agora_br_ts()
             st.rerun()
 
     st.markdown("---")
@@ -299,13 +308,26 @@ with tab_dashboard:
             ])
 
             with col_filtro:
-                lista_pedidos = (
-                    sorted(df_envios[col_id].astype(str).unique().tolist())
-                    if col_id
-                    else []
-                )
+                # Uma opção por pedido (com o nome do cliente): digitar o número
+                # ou o nome filtra a lista; o pedido mostra todas as suas etiquetas
+                nomes_por_pedido = {}
+                if col_id:
+                    for pid, nome in zip(
+                        df_envios[col_id].astype(str).str.strip(),
+                        df_envios[col_nome].astype(str).str.strip()
+                        if col_nome
+                        else [""] * len(df_envios),
+                    ):
+                        if pid:
+                            nomes_por_pedido.setdefault(pid, set())
+                            if nome:
+                                nomes_por_pedido[pid].add(nome.upper())
+                lista_pedidos = [
+                    f"{pid} · {' / '.join(sorted(nomes))}" if nomes else pid
+                    for pid, nomes in sorted(nomes_por_pedido.items())
+                ]
                 filtro_selecionado = st.selectbox(
-                    "🔍 Filtrar por Número do Pedido / ID:",
+                    "🔍 Buscar por Nº do Pedido ou Nome do Cliente:",
                     ["-- Mostrar Todos os Pedidos --"] + lista_pedidos,
                 )
 
@@ -344,7 +366,8 @@ with tab_dashboard:
             df_exibir = df_envios.copy()
             if filtro_selecionado != "-- Mostrar Todos os Pedidos --" and col_id:
                 df_exibir = df_exibir[
-                    df_exibir[col_id].astype(str) == filtro_selecionado
+                    df_exibir[col_id].astype(str).str.strip()
+                    == filtro_selecionado.split(" · ")[0]
                 ]
 
             df_exibir.insert(0, "Excluir", False)
@@ -380,7 +403,7 @@ with tab_dashboard:
 
             def estilo_linhas_atualizadas(df):
                 styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                hoje_str = datetime.now().strftime("%Y-%m-%d")
+                hoje_str = agora_br_ts().strftime("%Y-%m-%d")
                 
                 col_ult = next((c for c in df.columns if "ult" in c.lower() or "atualiz" in c.lower()), None)
                 

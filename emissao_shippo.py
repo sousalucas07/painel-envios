@@ -129,11 +129,12 @@ def comprar(rate, referencia):
     return tx["tracking_number"], tx["label_url"], float(rate["amount"])
 
 
-def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao_comprar=None):
+def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao_comprar=None, trechos=None):
     """Emite as etiquetas do modo, uma por vez.
 
     ao_comprar(etiqueta) é chamado logo após cada compra, para registrar na planilha
     antes da próxima: se a segunda falhar, a primeira já está gravada.
+    trechos: subconjunto de MODOS[modo] (ex.: só o Cli - Con); padrão = todos.
     """
     enderecos = {"ESC": ESCRITORIO}
     if cliente:
@@ -144,7 +145,7 @@ def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao
         enderecos["DPT"] = departamento if isinstance(departamento, dict) else endereco_departamento(departamento)
 
     etiquetas = []
-    for tipo, de, para in MODOS[modo]:
+    for tipo, de, para in trechos or MODOS[modo]:
         referencia = f"{num_pedido} {tipo}"
         rate = cotar(enderecos[de], enderecos[para], referencia)
         rastreio, url, custo = comprar(rate, referencia)
@@ -155,6 +156,30 @@ def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao
             ao_comprar(etiqueta)
         etiquetas.append(etiqueta)
     return etiquetas
+
+
+# ==============================================================================
+# IMPRESSÃO: etiqueta 4x6 deitada na metade de cima de uma folha
+# ==============================================================================
+PAGINA_POL = (8.27, 11.69)   # A4 em polegadas (Carta/Letter: (8.5, 11))
+MARGEM_TOPO_POL = 0.75
+
+
+def etiqueta_meia_pagina_pdf(png_bytes):
+    """PNG 4x6 da Shippo -> PDF com a etiqueta deitada, em tamanho real, na metade de cima."""
+    import io
+
+    from PIL import Image
+
+    etiqueta = Image.open(io.BytesIO(png_bytes))
+    dpi = round(min(etiqueta.size) / 4)  # lado menor da etiqueta = 4 polegadas
+    # Topo da etiqueta vai para a esquerda; "1" = preto e branco sem perda (código de barras nítido)
+    deitada = etiqueta.convert("L").rotate(90, expand=True).point(lambda p: 255 if p > 160 else 0).convert("1")
+    pagina = Image.new("1", (round(PAGINA_POL[0] * dpi), round(PAGINA_POL[1] * dpi)), 1)
+    pagina.paste(deitada, ((pagina.width - deitada.width) // 2, round(MARGEM_TOPO_POL * dpi)))
+    saida = io.BytesIO()
+    pagina.save(saida, "PDF", resolution=dpi)
+    return saida.getvalue()
 
 
 # ==============================================================================
@@ -279,6 +304,15 @@ def renderizar_aba_emissao():
     num_pedido = col_pedido.text_input("Número do Pedido / ID Bitrix *", key="emi_pedido").strip()
     modo = col_modo.radio("Tipo de Envio:", list(MODOS), horizontal=True, key="emi_modo")
 
+    # Cli - Con / Con - Cli: as duas (padrão) ou só uma delas
+    trechos = MODOS[modo]
+    if modo == "Cli - Con / Con - Cli":
+        quais = st.radio(
+            "Etiquetas:", ["Ambas", *(t for t, _, _ in trechos)], horizontal=True, key="emi_quais",
+        )
+        if quais != "Ambas":
+            trechos = [t for t in trechos if t[0] == quais]
+
     def _bloco_endereco(prefixo, rotulo):
         """Documento ou texto -> IA preenche os campos -> a pessoa confere. Devolve (dados, faltando)."""
         comprovante = st.file_uploader(
@@ -314,7 +348,7 @@ def renderizar_aba_emissao():
     OUTRO_DPT = "✏️ Outro endereço (digitar)"
     consulado = departamento = None
     faltando = []
-    if "CON" in {e for _, de, para in MODOS[modo] for e in (de, para)}:
+    if "CON" in {e for _, de, para in trechos for e in (de, para)}:
         consulado = st.selectbox("🏛️ Consulado:", sorted(ENDERECOS_CONSULADOS), key="emi_consulado")
     if modo.startswith("D55"):
         departamento = st.selectbox(
@@ -331,7 +365,7 @@ def renderizar_aba_emissao():
         cliente_dados = None
 
     # 2) Trava contra etiqueta duplicada (mesmo pedido + tipo já na planilha)
-    tipos = [t for t, _, _ in MODOS[modo]]
+    tipos = [t for t, _, _ in trechos]
     repetidas = _ja_emitidas(ler_envios_sheets(), num_pedido, tipos) if num_pedido else []
     forcar = False
     if repetidas:
@@ -371,6 +405,7 @@ def renderizar_aba_emissao():
                     modo, num_pedido,
                     cliente=endereco_cliente(cliente_dados) if cliente_dados else None,
                     consulado=consulado, departamento=departamento, ao_comprar=registrar,
+                    trechos=trechos,
                 )
         except Exception as e:
             print(f"❌ Emissão pedido {num_pedido}: {e}", flush=True)
@@ -381,16 +416,15 @@ def renderizar_aba_emissao():
 
     res = st.session_state.get("emi_resultado")
     if res and res["etiquetas"]:
-        ext = "png" if FORMATO_ETIQUETA == "PNG" else "pdf"
         st.success(f"✅ {len(res['etiquetas'])} etiqueta(s) do pedido #{res['pedido']} compradas e registradas.")
+        st.caption("O PDF sai com a etiqueta deitada na metade de cima da folha. Imprima em tamanho real (100%).")
         for e in res["etiquetas"]:
             st.markdown(f"**{e['tipo']}**: `{e['rastreio']}` (US$ {e['custo']:.2f})")
-            if ext == "png":
-                st.image(e["arquivo"], width=420)
+            st.image(e["arquivo"], width=420)
             st.download_button(
-                f"⬇️ Baixar etiqueta {e['tipo']}", data=e["arquivo"],
-                file_name=f"Etiqueta_{res['pedido']}_{e['tipo'].replace(' ', '')}.{ext}",
-                mime="image/png" if ext == "png" else "application/pdf",
+                f"⬇️ Baixar etiqueta {e['tipo']} (PDF para imprimir)", data=etiqueta_meia_pagina_pdf(e["arquivo"]),
+                file_name=f"Etiqueta_{res['pedido']}_{e['tipo'].replace(' ', '')}.pdf",
+                mime="application/pdf",
                 use_container_width=True, key=f"emi_dl_{e['rastreio']}",
             )
         if res.get("label_228"):

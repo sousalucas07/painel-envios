@@ -3,7 +3,7 @@ import re
 import time
 from datetime import datetime, timezone
 import requests
-from sheets import conectar_planilha_ativa as conectar_planilha
+from sheets import FUSO_BR, agora_br, conectar_planilha_ativa as conectar_planilha
 
 # ==============================================================================
 # CONFIGURAÇÕES DE API (Lendo do .env ou Secrets)
@@ -302,7 +302,7 @@ def dias_atrasado(tipo_envio, status, data_saida, data_criacao_str, agora=None):
         inicio = data_saida
     else:
         try:
-            inicio = datetime.fromisoformat(str(data_criacao_str).strip()).replace(tzinfo=timezone.utc)
+            inicio = datetime.fromisoformat(str(data_criacao_str).strip()).replace(tzinfo=FUSO_BR)
         except ValueError:
             return None
     if not inicio:
@@ -349,11 +349,11 @@ def consultar_shippo(tracking_code):
             if data_iso:
                 try:
                     dt_obj = datetime.fromisoformat(str(data_iso).replace("Z", "+00:00"))
-                    data_evento = dt_obj.strftime("%Y-%m-%d %H:%M")
+                    data_evento = dt_obj.astimezone(FUSO_BR).strftime("%Y-%m-%d %H:%M")
                 except Exception:
                     data_evento = str(data_iso)
             else:
-                data_evento = datetime.now().strftime("%Y-%m-%d %H:%M")
+                data_evento = agora_br().strftime("%Y-%m-%d %H:%M")
 
             # 1º evento fora do pré-envio = quando a USPS recebeu o envelope (base do SLA)
             data_saida = min(
