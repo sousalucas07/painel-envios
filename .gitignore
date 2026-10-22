@@ -11,6 +11,7 @@ credentials.json
 # Perfis de Navegação do Playwright
 perfil_shippingeasy/
 perfil_bot_usps/
+graphify-out/
 
 # PDFs Gerados e Temporários
 *.pdf
