@@ -165,7 +165,7 @@ def obter_telefone_bitrix(deal_id):
         print(f"   ⚠️ Contato #{contact_id} sem telefone cadastrado.", flush=True)
         return None
     except Exception as e:
-        print(f"   ⚠️ Erro ao consultar telefone no Bitrix: {e}", flush=True)
+        print(f"   ⚠️ Erro ao consultar telefone no Bitrix: {type(e).__name__}", flush=True)
         return None
 
 # ==============================================================================
@@ -197,7 +197,7 @@ def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=71104):
         else:
             print(f"   ⚠️ Falha ao criar tarefa no Bitrix (HTTP {res.status_code})", flush=True)
     except Exception as e:
-        print(f"   ⚠️ Erro ao gerar tarefa no Bitrix: {e}", flush=True)
+        print(f"   ⚠️ Erro ao gerar tarefa no Bitrix: {type(e).__name__}", flush=True)
 
 # ==============================================================================
 # DISPARO DIRETO DO WHATSAPP (WHATCRM)
@@ -214,7 +214,7 @@ def enviar_whatsapp_direto(telefone, mensagem):
     try:
         res = requests.post(WHATCRM_URL, json=payload, headers=WHATCRM_HEADERS, timeout=10)
         if res.status_code in [200, 201]:
-            print(f"   💬 WhatsApp enviado via WhatCRM para {telefone}!", flush=True)
+            print(f"   💬 WhatsApp enviado via WhatCRM para ...{str(telefone)[-4:]}!", flush=True)
         else:
             print(f"   ⚠️ Falha WhatCRM ({res.status_code}): {res.text}", flush=True)
     except Exception as e:
@@ -407,7 +407,7 @@ def rodar_monitoramento():
         tracking_code = extrair_apenas_numeros_rastreio(rastreio)
         if not tracking_code: continue
 
-        print(f"🔎 Checando linha {index} ({nome})...", flush=True)
+        print(f"🔎 Checando linha {index}...", flush=True)
         novo_status, data_evento, data_saida = consultar_shippo(tracking_code)
 
         if novo_status and novo_status.upper() != status_atual.upper():
