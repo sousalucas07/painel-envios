@@ -32,6 +32,10 @@ SERVICO = "usps_priority"  # Priority Mail: o mesmo de todas as etiquetas da Shi
 FORMATO_ETIQUETA = "PNG"   # 4x6, igual à configuração da ShippingEasy
 
 # Tipo de envio da tela -> etiquetas (tipo gravado na planilha, origem, destino)
+# Teto diário de compras (todos os usuários juntos), conferido na auditoria antes de cada pagamento
+TETO_ETIQUETAS_DIA = 50
+TETO_GASTO_DIA_USD = 500.0
+
 MODOS = {
     "IDA": [("IDA", "ESC", "CLI")],
     "RETORNO": [("RETORNO", "CLI", "ESC")],
@@ -129,12 +133,14 @@ def comprar(rate, referencia):
     return tx["tracking_number"], tx["label_url"], float(rate["amount"])
 
 
-def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao_comprar=None, trechos=None):
+def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao_comprar=None, trechos=None,
+           antes_de_pagar=None):
     """Emite as etiquetas do modo, uma por vez.
 
     ao_comprar(etiqueta) é chamado logo após cada compra, para registrar na planilha
     antes da próxima: se a segunda falhar, a primeira já está gravada.
     trechos: subconjunto de MODOS[modo] (ex.: só o Cli - Con); padrão = todos.
+    antes_de_pagar(rate) é chamado depois de cotar e antes de comprar: levanta exceção para barrar (teto).
     """
     enderecos = {"ESC": ESCRITORIO}
     if cliente:
@@ -148,6 +154,8 @@ def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao
     for tipo, de, para in trechos or MODOS[modo]:
         referencia = f"{num_pedido} {tipo}"
         rate = cotar(enderecos[de], enderecos[para], referencia)
+        if antes_de_pagar:
+            antes_de_pagar(rate)
         rastreio, url, custo = comprar(rate, referencia)
         arquivo = requests.get(url, timeout=60)
         arquivo.raise_for_status()
@@ -372,7 +380,25 @@ def renderizar_aba_emissao():
             st.warning(f"⚠️ O pedido {num_pedido} já tem etiqueta {', '.join(repetidas)} na planilha.")
             forcar = st.checkbox("Emitir mesmo assim (vai cobrar de novo)", key="emi_forcar")
 
-    pronto = num_pedido.isdigit() and not faltando and (not repetidas or forcar)
+    # 3) Teto diário (auditoria). Sem conseguir ler, não compra.
+    from sheets import compras_do_dia
+
+    try:
+        qtd_hoje, gasto_hoje = compras_do_dia()
+        dentro_do_teto = (
+            qtd_hoje + len(tipos) <= TETO_ETIQUETAS_DIA and gasto_hoje < TETO_GASTO_DIA_USD
+        )
+        st.caption(
+            f"Hoje: {qtd_hoje} de {TETO_ETIQUETAS_DIA} etiquetas"
+            f" · US$ {gasto_hoje:.2f} de {TETO_GASTO_DIA_USD:.0f}"
+        )
+        if not dentro_do_teto:
+            st.error("⛔ Teto diário de compras atingido. Novas compras só amanhã.")
+    except Exception as e:
+        dentro_do_teto = False
+        st.error(f"⛔ Não consegui conferir o teto diário na auditoria ({type(e).__name__}). Compra bloqueada.")
+
+    pronto = num_pedido.isdigit() and not faltando and (not repetidas or forcar) and dentro_do_teto
     if faltando:
         st.caption(f"Faltando: {', '.join(faltando)}")
 
@@ -385,6 +411,15 @@ def renderizar_aba_emissao():
             nome = f"DPT {departamento}"
 
         etiquetas = []
+
+        def checar_teto(rate):
+            # Relê na hora do pagamento: outra pessoa pode ter comprado desde que a tela abriu
+            qtd, gasto = compras_do_dia()
+            valor = float(rate["amount"])
+            if qtd + 1 > TETO_ETIQUETAS_DIA or gasto + valor > TETO_GASTO_DIA_USD:
+                raise RuntimeError(
+                    f"Teto diário atingido ({qtd} etiquetas, US$ {gasto:.2f}). Esta etiqueta NÃO foi comprada."
+                )
 
         def registrar(etiqueta):
             etiquetas.append(etiqueta)  # já comprada: mostra na tela mesmo se a planilha falhar
@@ -405,7 +440,7 @@ def renderizar_aba_emissao():
                     modo, num_pedido,
                     cliente=endereco_cliente(cliente_dados) if cliente_dados else None,
                     consulado=consulado, departamento=departamento, ao_comprar=registrar,
-                    trechos=trechos,
+                    trechos=trechos, antes_de_pagar=checar_teto,
                 )
         except Exception as e:
             print(f"❌ Emissão pedido {num_pedido}: {e}", flush=True)

@@ -5,7 +5,7 @@ import os
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-from leitor_foto import MODELO_GEMINI, TAMANHO_MAX_FOTO
+from leitor_foto import MODELO_GEMINI, TAMANHO_MAX_FOTO, consumir_leitura_gemini
 
 ENDERECOS_CONSULADOS = {
     "WASHINGTON": "CONSULATE GENERAL OF BRAZIL IN WASHINGTON\n1030 15TH ST NW, SUITE 280W\nATT: SETOR DE PASSAPORTE\nWASHINGTON, DC 20005-1506",
@@ -162,6 +162,7 @@ def extrair_endereco(texto="", arquivo_bytes=None, mime_type=None):
     chave = os.getenv("GEMINI_API_KEY", "")
     if not chave:
         raise RuntimeError("GEMINI_API_KEY não configurada no .env / Secrets.")
+    consumir_leitura_gemini()
 
     conteudo = [PROMPT_ENDERECO]
     if arquivo_bytes:

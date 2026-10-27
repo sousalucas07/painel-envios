@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -197,6 +198,37 @@ def registrar_envio_sheets(dados):
         return False
 
 
+def _valor_usd(texto):
+    """'9,92' / '9.92' / 'US$ 9,92' -> 9.92 (a planilha formata no padrão brasileiro)."""
+    s = str(texto).replace("US$", "").strip()
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def compras_do_dia():
+    """(quantidade, total em US$) das etiquetas compradas hoje (Brasília), pela auditoria.
+
+    Compra = custo de US$ 1 ou mais: cadastro manual/foto (0,01) e reembolso (negativo)
+    não entram, e reembolso NÃO devolve espaço no teto. Erro de leitura levanta exceção.
+    """
+    client = conectar_client()
+    if not client:
+        raise RuntimeError("Sem conexão com o Google para conferir o teto diário.")
+    valores = client.open_by_key(ID_PLANILHA_AUDITORIA).get_worksheet(0).get_all_values()
+    hoje = agora_br().strftime("%Y-%m-%d")
+    compras = [
+        c
+        for linha in valores[1:]
+        if len(linha) > 5 and str(linha[0]).strip().startswith(hoje)
+        and (c := _valor_usd(linha[5])) >= 1
+    ]
+    return len(compras), sum(compras)
+
+
 def registrar_reembolso_sheets(dados):
     """Lança o reembolso só na planilha de auditoria (custo negativo)."""
     client = conectar_client()
@@ -217,7 +249,7 @@ def registrar_reembolso_sheets(dados):
         return False
 
 
-def deletar_envios_sheets(rastreios):
+def deletar_envios_sheets(rastreios, pausa=0):
     """Apaga as linhas cujo rastreio (só dígitos, link ou código) está em `rastreios`.
 
     O rastreio identifica a linha: o nº do pedido se repete (IDA + RETORNO etc.).
@@ -245,6 +277,8 @@ def deletar_envios_sheets(rastreios):
         # De baixo para cima: apagar uma linha não muda o número das que estão acima
         for n in sorted(linhas, reverse=True):
             sheet.delete_rows(n)
+            if pausa:
+                time.sleep(pausa)  # cota de escrita do Google Sheets
 
         achados = {re.sub(r"\D", "", valores[n - 1][idx]) for n in linhas}
         return sorted(alvos - achados)

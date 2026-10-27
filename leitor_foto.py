@@ -1,13 +1,14 @@
 import json
 import os
 import re
+import threading
 import time
 
 import pandas as pd
 import requests
 import streamlit as st
 
-from sheets import ler_envios_sheets, registrar_envio_sheets
+from sheets import agora_br, ler_envios_sheets, registrar_envio_sheets
 
 MODELO_GEMINI = "gemini-flash-latest"
 TIPO_ENVIO_FOTO = "Con - Cli"
@@ -68,6 +69,43 @@ def avaliar_linha(pedido, rastreio, nome, ja_cadastrados, repetidos_no_lote):
 # ==============================================================================
 # GEMINI
 # ==============================================================================
+# Freio de uso (o freio de custo de verdade é o alerta de orçamento no Google Cloud).
+# A contagem do dia fica na memória do servidor: zera se o app reiniciar.
+LIMITE_GEMINI_DIA = 500           # leituras por dia, somando todos os usuários
+LIMITE_GEMINI_HORA_SESSAO = 100   # leituras por hora em uma mesma aba/sessão
+
+
+@st.cache_resource
+def _contador_gemini():
+    return {"dia": "", "total": 0, "trava": threading.Lock()}
+
+
+def consumir_leitura_gemini():
+    """Conta 1 leitura do Gemini. Levanta RuntimeError se passar de um dos limites."""
+    agora = agora_br()
+    dia, hora = agora.strftime("%Y-%m-%d"), agora.strftime("%Y-%m-%d %H")
+    contador = _contador_gemini()
+    with contador["trava"]:
+        if contador["dia"] != dia:
+            contador["dia"], contador["total"] = dia, 0
+        sessao = st.session_state.setdefault("gemini_uso", {"hora": hora, "total": 0})
+        if sessao["hora"] != hora:
+            sessao["hora"], sessao["total"] = hora, 0
+
+        if contador["total"] >= LIMITE_GEMINI_DIA:
+            raise RuntimeError(
+                f"Limite diário de {LIMITE_GEMINI_DIA} leituras da IA atingido."
+                " Volta amanhã, ou preencha os campos à mão."
+            )
+        if sessao["total"] >= LIMITE_GEMINI_HORA_SESSAO:
+            raise RuntimeError(
+                f"Limite de {LIMITE_GEMINI_HORA_SESSAO} leituras por hora nesta aba atingido."
+                " Aguarde a próxima hora."
+            )
+        contador["total"] += 1
+        sessao["total"] += 1
+
+
 def ler_etiquetas(imagem_bytes, mime_type):
     """Envia a foto ao Gemini e devolve [{'pedido': ..., 'rastreio': ...}] só com dígitos."""
     from google import genai
@@ -76,6 +114,7 @@ def ler_etiquetas(imagem_bytes, mime_type):
     chave = os.getenv("GEMINI_API_KEY", "")
     if not chave:
         raise RuntimeError("GEMINI_API_KEY não configurada no .env / Secrets.")
+    consumir_leitura_gemini()
 
     client = genai.Client(api_key=chave)
     resposta = client.models.generate_content(

@@ -331,7 +331,7 @@ def extrair_apenas_numeros_rastreio(texto):
 
 def consultar_shippo(tracking_code):
     shippo_key = obter_shippo_key()
-    if not shippo_key: return None, None, None
+    if not shippo_key: return None, None, None, None
 
     url = "https://api.goshippo.com/tracks/"
     headers = {"Authorization": f"ShippoToken {shippo_key}", "Content-Type": "application/json"}
@@ -346,10 +346,12 @@ def consultar_shippo(tracking_code):
             detalhe = tracking_status.get("status_details", "")
             data_iso = tracking_status.get("status_date", "")
 
+            data_status = None
             if data_iso:
                 try:
                     dt_obj = datetime.fromisoformat(str(data_iso).replace("Z", "+00:00"))
                     data_evento = dt_obj.astimezone(FUSO_BR).strftime("%Y-%m-%d %H:%M")
+                    data_status = dt_obj
                 except Exception:
                     data_evento = str(data_iso)
             else:
@@ -366,10 +368,17 @@ def consultar_shippo(tracking_code):
             )
 
             status_final = f"{status_macro} - {detalhe}" if detalhe else status_macro
-            return status_final if status_macro else "AGUARDANDO ATUALIZAR STATUS", data_evento, data_saida
-        return None, None, None
+            return (
+                status_final if status_macro else "AGUARDANDO ATUALIZAR STATUS",
+                data_evento, data_saida, data_status,
+            )
+        return None, None, None, None
     except Exception:
-        return None, None, None
+        return None, None, None, None
+
+# Entregue há mais de N dias sai da planilha do painel (a auditoria guarda a compra)
+DIAS_MANTER_ENTREGUE = 15
+LIMITE_EXCLUSOES_CICLO = 30  # o restante sai nos próximos ciclos (cota do Google Sheets)
 
 def rodar_monitoramento():
     print("\n🚀 INICIANDO MONITORAMENTO AUTOMÁTICO (SHIPPO + WHATCRM)...", flush=True)
@@ -394,6 +403,7 @@ def rodar_monitoramento():
 
     linhas = valores[1:]
     mudancas = 0
+    entregues_antigos = []  # (rastreio, pedido, tipo)
     for index, row in enumerate(linhas, start=2):
         if len(row) < idx_rastreio: continue
         
@@ -408,7 +418,7 @@ def rodar_monitoramento():
         if not tracking_code: continue
 
         print(f"🔎 Checando linha {index}...", flush=True)
-        novo_status, data_evento, data_saida = consultar_shippo(tracking_code)
+        novo_status, data_evento, data_saida, data_status = consultar_shippo(tracking_code)
 
         if novo_status and novo_status.upper() != status_atual.upper():
             print(f"   ✨ Mudança Detectada: '{status_atual}' ➔ '{novo_status}'", flush=True)
@@ -426,7 +436,24 @@ def rodar_monitoramento():
         if novo_status:
             verificar_sla(deal_id, tracking_code, tipo_envio, novo_status, data_saida, data_criacao)
 
+        # 4. Entregue há mais de 15 dias (data da entrega segundo a USPS): marca para sair do painel
+        if (
+            novo_status and "DELIVERED" in novo_status.upper() and data_status
+            and (datetime.now(timezone.utc) - data_status).days > DIAS_MANTER_ENTREGUE
+        ):
+            entregues_antigos.append((tracking_code, deal_id, tipo_envio))
+
         time.sleep(0.2)
+
+    if entregues_antigos:
+        from sheets import deletar_envios_sheets
+
+        lote = entregues_antigos[:LIMITE_EXCLUSOES_CICLO]
+        nao_apagados = set(deletar_envios_sheets([r for r, _, _ in lote], pausa=1))
+        for rastreio, pedido, tipo in lote:
+            if rastreio not in nao_apagados:
+                print(f"   🗑️ Entregue há +{DIAS_MANTER_ENTREGUE} dias, saiu do painel: #{pedido} {tipo} (…{rastreio[-4:]})", flush=True)
+        print(f"🧹 {len(lote) - len(nao_apagados)} linhas entregues removidas do painel.", flush=True)
 
     print(f"✅ Monitoramento concluído! {mudancas} etiquetas atualizadas.", flush=True)
    
