@@ -65,6 +65,14 @@ DEPARTAMENTOS_ESTADO = {
         "zip": "60602",
         "telefone": "9294188661",
     },
+    "INDIANA": {
+        "nome": "Secretary of State Business Services Division",
+        "endereco": "302 W Washington Street, Room E-018",
+        "cidade": "INDIANAPOLIS",
+        "estado": "IN",
+        "zip": "46204",
+        "telefone": "3172349768",
+    },
     "IOWA": {
         "nome": "Secretary of State Business Services Division",
         "endereco": "Lucas Building, 1st Floor 321 E. 12th St.",
