@@ -47,9 +47,9 @@ except ImportError:
     renderizar_label_passaporte = None
 
 try:
-    from emissao_shippo import renderizar_aba_emissao
+    from emissao_shippo import etiquetas_para_reimprimir, renderizar_aba_emissao
 except ImportError:
-    renderizar_aba_emissao = None
+    renderizar_aba_emissao = etiquetas_para_reimprimir = None
 
 # Configuração da Página
 st.set_page_config(
@@ -370,9 +370,16 @@ with tab_dashboard:
                     == filtro_selecionado.split(" · ")[0]
                 ]
 
-            df_exibir.insert(0, "Excluir", False)
+            # Imprimir na frente; Excluir no fim (depois de ULT. ATUALIZAÇÃO)
+            df_exibir.insert(0, "Imprimir", False)
+            df_exibir["Excluir"] = False
 
             config_colunas = {
+                "Imprimir": st.column_config.CheckboxColumn(
+                    "🖨️ Imprimir",
+                    help="Marque para baixar de novo a etiqueta (só as emitidas por este sistema)",
+                    default=False,
+                ),
                 "Excluir": st.column_config.CheckboxColumn(
                     "Excluir",
                     help="Marque para apagar este registo da planilha",
@@ -420,7 +427,7 @@ with tab_dashboard:
             )
 
             colunas_bloqueadas = [
-                c for c in df_final_render.columns if c != "Excluir"
+                c for c in df_final_render.columns if c not in ("Imprimir", "Excluir")
             ]
 
             tabela_editada = st.data_editor(
@@ -436,6 +443,40 @@ with tab_dashboard:
                     f"{filtro_selecionado}_{st.session_state.get('versao_tabela', 0)}"
                 ),
             )
+
+            # Reimpressão: busca a compra na Shippo e junta tudo num PDF
+            linhas_imprimir = tabela_editada[tabela_editada["Imprimir"] == True]
+            if not linhas_imprimir.empty and col_rastreio and etiquetas_para_reimprimir:
+                selecao = tuple(linhas_imprimir[col_rastreio].astype(str))
+                st.info(
+                    "🖨️ Selecionadas para imprimir: **"
+                    + ", ".join(
+                        f"#{l[col_id] if col_id else '?'} (…{str(l[col_rastreio])[-6:]})"
+                        for _, l in linhas_imprimir.iterrows()
+                    )
+                    + "**"
+                )
+                if st.button("🖨️ Preparar PDF das etiquetas"):
+                    try:
+                        with st.spinner("Buscando as etiquetas na Shippo..."):
+                            pdf, nao_achados = etiquetas_para_reimprimir(selecao)
+                        st.session_state["reimpressao"] = {"selecao": selecao, "pdf": pdf}
+                        if nao_achados:
+                            st.warning(
+                                "⚠️ Sem etiqueta para reimprimir (não emitida por este sistema"
+                                " ou com mais de 90 dias): …"
+                                + ", …".join(r[-6:] for r in nao_achados)
+                            )
+                    except Exception as e:
+                        st.error(f"❌ Falha ao buscar as etiquetas ({type(e).__name__}).")
+                reimpressao = st.session_state.get("reimpressao")
+                if reimpressao and reimpressao["selecao"] == selecao and reimpressao["pdf"]:
+                    st.download_button(
+                        "⬇️ Baixar etiquetas (PDF)",
+                        data=reimpressao["pdf"],
+                        file_name=f"Etiquetas_reimpressao_{agora_br_ts():%Y%m%d_%H%M}.pdf",
+                        mime="application/pdf",
+                    )
 
             linhas_marcadas = tabela_editada[tabela_editada["Excluir"] == True]
 

@@ -175,6 +175,23 @@ MARGEM_TOPO_POL = 0.75
 
 def etiqueta_meia_pagina_pdf(png_bytes):
     """PNG 4x6 da Shippo -> PDF com a etiqueta deitada, em tamanho real, na metade de cima."""
+    return etiquetas_pdf([png_bytes])
+
+
+def etiquetas_pdf(lista_png):
+    """Várias etiquetas -> um PDF só, uma por folha, no formato de etiqueta_meia_pagina_pdf."""
+    import io
+
+    paginas = [_pagina_meia(png) for png in lista_png]
+    dpi = paginas[0][1]
+    saida = io.BytesIO()
+    paginas[0][0].save(
+        saida, "PDF", resolution=dpi, save_all=True, append_images=[p for p, _ in paginas[1:]],
+    )
+    return saida.getvalue()
+
+
+def _pagina_meia(png_bytes):
     import io
 
     from PIL import Image
@@ -185,9 +202,7 @@ def etiqueta_meia_pagina_pdf(png_bytes):
     deitada = etiqueta.convert("L").rotate(90, expand=True).point(lambda p: 255 if p > 160 else 0).convert("1")
     pagina = Image.new("1", (round(PAGINA_POL[0] * dpi), round(PAGINA_POL[1] * dpi)), 1)
     pagina.paste(deitada, ((pagina.width - deitada.width) // 2, round(MARGEM_TOPO_POL * dpi)))
-    saida = io.BytesIO()
-    pagina.save(saida, "PDF", resolution=dpi)
-    return saida.getvalue()
+    return pagina, dpi
 
 
 # ==============================================================================
@@ -208,29 +223,52 @@ def _shippo_get(caminho, params=None):
 
 
 def buscar_compra(rastreio):
-    """Acha a transação (compra) do rastreio, da mais nova para a mais antiga.
+    """Acha a transação (compra) do rastreio, ou None."""
+    return buscar_compras([rastreio]).get(rastreio)
 
-    A Shippo não filtra transação por rastreio: percorre as páginas até achar
-    ou até passar do prazo de reembolso.
+
+def buscar_compras(rastreios):
+    """{rastreio: transação} das compras encontradas, da mais nova para a mais antiga.
+
+    A Shippo não filtra transação por rastreio: percorre as páginas até achar todos
+    ou até passar de PRAZO_REEMBOLSO_DIAS (90 dias).
     """
     from datetime import datetime, timedelta, timezone
 
+    faltam = set(rastreios)
+    achadas = {}
     limite = datetime.now(timezone.utc) - timedelta(days=PRAZO_REEMBOLSO_DIAS)
     params = {"results": 100, "object_status": "SUCCESS", "page": 1}
-    while True:
+    while faltam:
         pagina = _shippo_get("/transactions/", params)
         resultados = pagina.get("results") or []
         for tx in resultados:
-            if tx.get("tracking_number") == rastreio:
-                return tx
+            if tx.get("tracking_number") in faltam:
+                achadas[tx["tracking_number"]] = tx
+                faltam.discard(tx["tracking_number"])
         mais_antiga = min((tx.get("object_created", "") for tx in resultados), default="")
         if (
             not pagina.get("next")
             or not mais_antiga
             or datetime.fromisoformat(mais_antiga.replace("Z", "+00:00")) < limite
         ):
-            return None
+            break
         params["page"] += 1
+    return achadas
+
+
+def etiquetas_para_reimprimir(rastreios):
+    """Baixa de novo as etiquetas compradas pela emissão. Devolve (pdf ou None, rastreios não achados)."""
+    rastreios = [re.sub(r"\D", "", str(r)) for r in rastreios]
+    compras = buscar_compras(rastreios)
+    pngs = []
+    for r in rastreios:
+        if r in compras and compras[r].get("label_url"):
+            arquivo = requests.get(compras[r]["label_url"], timeout=60)
+            arquivo.raise_for_status()
+            pngs.append(arquivo.content)
+    nao_achados = [r for r in rastreios if r not in compras]
+    return (etiquetas_pdf(pngs) if pngs else None), nao_achados
 
 
 def consultar_reembolso(rastreio):
