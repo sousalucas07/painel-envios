@@ -13,13 +13,15 @@ no GitHub Actions. Endereço: **https://envios.despa.digital**.
 ## 1. Baixar o código (na VPS, como deploy)
 
     ssh deploy@srv1980091.hstgr.cloud
-    git clone --branch portal-envios https://github.com/sousalucas07/painel-envios.git /opt/envios
+    git clone --branch portal-envios https://github.com/sousalucas07/painel-envios.git ~/envios
+
+(O `/opt` é só do root; como o painel geral em `~/painel`, este fica em `/home/deploy/envios`.)
 
 (Se o repositório virar privado: use uma deploy key só de leitura, como no cadastro.)
 
 ## 2. Chaves (secrets.toml)
 
-    cd /opt/envios/portal_envios
+    cd ~/envios/portal_envios
     cp secrets.exemplo.toml secrets.toml
     nano secrets.toml
 
@@ -30,8 +32,7 @@ Cole o conteúdo de **Settings → Secrets** do app no Streamlit Cloud e acresce
 
 Depois:
 
-    chmod 600 secrets.toml
-    sudo chown 1000 secrets.toml   # o container roda como usuário 1000
+    chmod 600 secrets.toml   # dono: deploy (uid 1000), o mesmo usuário do container
 
 O `secrets.toml` nunca vai para o git (está no `.gitignore` desta pasta) nem para a imagem.
 
@@ -44,13 +45,15 @@ O `secrets.toml` nunca vai para o git (está no `.gitignore` desta pasta) nem pa
 Se a rede tiver outro nome: `REDE_CADASTRO=<nome> docker compose up -d --build`.
 
 ## 4. HTTPS (Caddy do cadastro)
-Cole o conteúdo de `Caddyfile.envios` no fim de `/opt/econsular/Caddyfile` e recarregue:
+Faça um backup e cole o conteúdo de `Caddyfile.envios` no fim de `/opt/econsular/Caddyfile`
+(use `cat >>`: editores que trocam o arquivo quebram o vínculo com o container). Depois valide e recarregue:
 
+    docker exec econsular-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
     docker exec econsular-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 
 ## 5. Atualizar depois
 
-    cd /opt/envios && git pull && cd portal_envios && docker compose up -d --build
+    cd ~/envios && git pull && cd portal_envios && docker compose up -d --build
 
 ## 6. Testes antes de liberar para a equipe
 1. Login: senha certa, senha errada, bloqueio depois de 5 erradas (15 min), Sair.
