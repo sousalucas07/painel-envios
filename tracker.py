@@ -102,21 +102,37 @@ def obter_shippo_key():
         pass
     return os.getenv("SHIPPO_LIVE_KEY", "")
 
+DDDS_BR = {
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38,
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 53, 54, 55, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+    71, 73, 74, 75, 77, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99,
+}
+
 def limpar_telefone(telefone):
-    if not telefone: return ""
-    numeros = re.sub(r'\D', '', str(telefone))
-    if not numeros: return ""
-    
-    # Se já é número dos EUA completo (1 + 10 dígitos = 11 dígitos começando com 1)
+    numeros = re.sub(r"\D", "", str(telefone or ""))
+    if not numeros:
+        return ""
+
+    # Brasil já com DDI (55 + 10 ou 11 dígitos)
+    if len(numeros) in (12, 13) and numeros.startswith("55"):
+        return numeros
+
+    # Celular do Brasil sem DDI: DDD válido + 9 + 8 dígitos.
+    # Vem antes da regra dos EUA porque DDD 11-19 também começa com 1. Não há ambiguidade:
+    # nos EUA nenhum código de área tem 9 no meio (faixa reservada), então "1X9..." nunca é EUA.
+    if len(numeros) == 11 and int(numeros[:2]) in DDDS_BR and numeros[2] == "9":
+        return "55" + numeros
+
+    # EUA já com DDI (1 + 10 dígitos)
     if len(numeros) == 11 and numeros.startswith("1"):
         return numeros
 
-    # Se já é número do Brasil com DDI (55 + 10 ou 11 dígitos)
-    if len(numeros) in [12, 13] and numeros.startswith("55"):
-        return numeros
+    # 10 dígitos = EUA sem o 1 (os clientes moram nos EUA; celular BR hoje sempre tem 11 dígitos).
+    # ponytail: fixo BR de 10 dígitos sem 55 cai aqui como EUA; cadastrar com +55 no Bitrix resolve.
+    if len(numeros) == 10:
+        return "1" + numeros
 
-    # Se for número do Brasil sem DDI (10 ou 11 dígitos sem começar por 1)
-    if len(numeros) in [10, 11]:
+    if len(numeros) == 11:
         return "55" + numeros
 
     return numeros
