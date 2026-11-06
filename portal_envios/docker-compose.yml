@@ -1,0 +1,25 @@
+# Painel de envios (versão nova). Sobe na mesma VPS do cadastro, atrás do Caddy dele (HTTPS).
+# Não abre portas no servidor: só o Caddy alcança este container, pela rede do cadastro.
+services:
+  envios:
+    build:
+      context: ..
+      dockerfile: portal_envios/Dockerfile
+    container_name: portal-envios
+    restart: unless-stopped
+    environment:
+      COOKIE_SEGURO: "1"          # cookie de login só por HTTPS
+    volumes:
+      - ./secrets.toml:/app/.streamlit/secrets.toml:ro   # as mesmas chaves do Streamlit Cloud (ver DEPLOY.md)
+    mem_limit: 1g
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks: [cadastro]
+
+networks:
+  cadastro:
+    external: true
+    # rede criada pelo compose do cadastro em /opt/econsular (confira: docker network ls)
+    name: ${REDE_CADASTRO:-econsular_default}

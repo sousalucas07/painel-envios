@@ -1,0 +1,15 @@
+# Portal de envios (versões testadas). A lógica vem dos arquivos da raiz do repositório.
+fastapi==0.154.0
+uvicorn==0.49.0
+itsdangerous==2.2.0
+python-multipart==0.0.32
+# usados pela lógica do painel atual (sheets, tracker, emissao_shippo, leitor_foto, label_passaporte)
+streamlit==1.58.0
+pandas==3.0.3
+gspread==6.2.1
+google-auth==2.55.0
+requests==2.34.2
+python-dotenv==1.2.2
+google-genai==2.9.0
+Pillow==12.2.0
+tzdata==2023.3

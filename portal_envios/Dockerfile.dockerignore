@@ -1,0 +1,14 @@
+# Lista do que PODE entrar na imagem (o resto fica de fora: .env, credentials.json, planilhas, testes...)
+*
+!sheets.py
+!tracker.py
+!emissao_shippo.py
+!leitor_foto.py
+!label_passaporte.py
+!departamentos.py
+!atualizar_tarefas.py
+!LABEL_3.png
+!portal_envios/
+portal_envios/secrets.toml
+portal_envios/.env
+**/__pycache__
