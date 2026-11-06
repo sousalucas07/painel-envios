@@ -49,7 +49,9 @@ button { font: inherit; color: inherit; }
 .shell { position: relative; z-index: 2; width: 100%; max-width: 1600px; margin: 0 auto; padding: 30px clamp(40px, 5vw, 88px) 88px; }
 .top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; }
 .wordmark { height: 32px; display: block; }
-.top-dir { justify-self: end; }
+/* símbolo D55 na linha do título; as margens negativas não deixam ele aumentar a altura do topo */
+.mark-topo { justify-self: end; width: 96px; height: 96px; margin: -36px 0;
+  filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
 .power-wrap { display: flex; flex-direction: column; align-items: center; gap: 7px; }
 .power {
   display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border-radius: 50%; cursor: pointer;
@@ -61,13 +63,12 @@ button { font: inherit; color: inherit; }
 .power .material-icons { font-size: 22px; }
 .power:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
-.hero { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 32px; margin-top: 14px; padding: 0 0 6px; }
+.hero { margin-top: 14px; }
 .h1 { margin: 0; color: var(--text); font: 500 clamp(26px, 2.6vw, 36px)/1.05 var(--display); text-transform: uppercase; }
 .sub { margin: 10px 0 0; font-size: 15px; color: var(--muted); }
-.mark-big { width: 120px; height: 120px; margin: -6px 0 -48px; filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
 
 /* ---------- abas (mesma barra azul do painel de automações) ---------- */
-.abas { display: flex; gap: 40px; margin: 10px 0 36px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.abas { display: flex; gap: 40px; margin: 110px 0 36px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .abas::-webkit-scrollbar { display: none; }
 .aba { all: unset; box-sizing: border-box; flex: none; cursor: pointer; padding: 10px 2px 0; }
 .aba-nome { display: inline-block; font: 500 clamp(15px, 1.55vw, 19px)/1.1 var(--display); text-transform: uppercase; color: var(--muted); white-space: nowrap; transition: color .25s; }
@@ -292,10 +293,10 @@ details.dobra > summary:focus-visible { outline: 2px solid var(--text); outline-
 @media (max-width: 720px) {
   .hud { inset: 8px; } .hud .b, .hud .r { display: none; }
   .shell { padding: 18px 16px 56px; }
-  .top { grid-template-columns: auto 1fr; } .top-dir { display: none; }
+  .top { grid-template-columns: auto 1fr; } .mark-topo { display: none; }
   .power-wrap { justify-self: end; flex-direction: row-reverse; }
-  .hero { grid-template-columns: 1fr; margin-top: 10px; padding: 0 0 12px; } .mark-big { display: none; }
-  .abas { gap: 22px; margin-right: -16px; padding-right: 16px; }
+  .hero { margin-top: 10px; }
+  .abas { gap: 22px; margin-top: 36px; margin-right: -16px; padding-right: 16px; }
   .caixa { padding: 20px 16px 18px; }
   .g2, .g3, .teto { grid-template-columns: 1fr; }
   .legenda-lista { grid-template-columns: 1fr; }
