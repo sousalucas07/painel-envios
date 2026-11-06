@@ -61,10 +61,10 @@ button { font: inherit; color: inherit; }
 .power .material-icons { font-size: 22px; }
 .power:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
-.hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 32px; padding: 36px 0 14px; }
+.hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 32px; margin-top: -18px; padding: 0 0 6px; }
 .h1 { margin: 0; color: var(--text); font: 500 clamp(26px, 2.6vw, 36px)/1.05 var(--display); text-transform: uppercase; }
 .sub { margin: 10px 0 0; font-size: 15px; color: var(--muted); }
-.mark-big { width: 120px; height: 120px; filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
+.mark-big { width: 120px; height: 120px; transform: translateY(22px); filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
 
 /* ---------- abas (mesma barra azul do painel de automações) ---------- */
 .abas { display: flex; gap: 40px; margin: 10px 0 36px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
