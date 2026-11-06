@@ -61,10 +61,10 @@ button { font: inherit; color: inherit; }
 .power .material-icons { font-size: 22px; }
 .power:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
-.hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 32px; margin-top: -18px; padding: 0 0 6px; }
+.hero { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 32px; margin-top: 14px; padding: 0 0 6px; }
 .h1 { margin: 0; color: var(--text); font: 500 clamp(26px, 2.6vw, 36px)/1.05 var(--display); text-transform: uppercase; }
 .sub { margin: 10px 0 0; font-size: 15px; color: var(--muted); }
-.mark-big { width: 120px; height: 120px; transform: translateY(22px); filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
+.mark-big { width: 120px; height: 120px; margin: -6px 0 -48px; filter: drop-shadow(0 0 26px rgba(26,102,229,.6)) drop-shadow(0 0 90px rgba(26,102,229,.4)); }
 
 /* ---------- abas (mesma barra azul do painel de automações) ---------- */
 .abas { display: flex; gap: 40px; margin: 10px 0 36px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
@@ -294,7 +294,7 @@ details.dobra > summary:focus-visible { outline: 2px solid var(--text); outline-
   .shell { padding: 18px 16px 56px; }
   .top { grid-template-columns: auto 1fr; } .top-dir { display: none; }
   .power-wrap { justify-self: end; flex-direction: row-reverse; }
-  .hero { grid-template-columns: 1fr; padding: 30px 0 18px; } .mark-big { display: none; }
+  .hero { grid-template-columns: 1fr; margin-top: 10px; padding: 0 0 12px; } .mark-big { display: none; }
   .abas { gap: 22px; margin-right: -16px; padding-right: 16px; }
   .caixa { padding: 20px 16px 18px; }
   .g2, .g3, .teto { grid-template-columns: 1fr; }
