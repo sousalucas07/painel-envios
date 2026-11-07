@@ -273,7 +273,7 @@ document.addEventListener('click', async (e) => {
   if (b.id === 'b-preparar') {
     const rastreios = [...sel.imp], chave = chaveImp();
     try {
-      const r = await ocupado(b, 'Buscando na Shippo…', () => api('/api/envios/imprimir', { metodo: 'POST', json: { rastreios }, bruto: true }));
+      const r = await ocupado(b, 'Buscando as etiquetas…', () => api('/api/envios/imprimir', { metodo: 'POST', json: { rastreios }, bruto: true }));
       const nao = (r.headers.get('X-Nao-Achados') || '').split(',').filter(Boolean);
       pdfPronto = { chave, blob: await r.blob(), nao };
       renderBarras();
@@ -427,10 +427,10 @@ $('#b-comprar').addEventListener('click', async (e) => {
     forcar: $('#emi-forcar') ? $('#emi-forcar').checked : false,
   };
   const n = trechosAtuais().length;
-  if (!confirm(`Comprar ${n} etiqueta${n > 1 ? 's' : ''} para o pedido #${pedido}? A compra é cobrada na Shippo.`)) return;
+  if (!confirm(`Comprar ${n} etiqueta${n > 1 ? 's' : ''} para o pedido #${pedido}? A compra é cobrada na hora.`)) return;
   let r;
   try {
-    r = await ocupado(e.currentTarget, 'Comprando na Shippo…', () => api('/api/emissao/comprar', { metodo: 'POST', json: corpo }));
+    r = await ocupado(e.currentTarget, 'Comprando…', () => api('/api/emissao/comprar', { metodo: 'POST', json: corpo }));
   } catch (err) {
     if (!silencioso(err)) toast(esc(err.message), 'erro', 7000);
     renderEmitir(); return;

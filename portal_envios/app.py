@@ -323,7 +323,7 @@ def imprimir(dados: Rastreios, sessao: dict = Depends(exigir_login)):
         pdf, nao_achados = emi.etiquetas_para_reimprimir(dados.rastreios[:50])
     except Exception as e:
         print(f"❌ Reimpressão: {type(e).__name__}", flush=True)
-        raise HTTPException(502, f"Falha ao buscar as etiquetas na Shippo ({type(e).__name__}).")
+        raise HTTPException(502, f"Falha ao buscar as etiquetas ({type(e).__name__}).")
     if not pdf:
         return JSONResponse({"detail": "Nenhuma das etiquetas foi emitida por este sistema (ou tem mais de 90 dias).",
                              "nao_achados": nao_achados}, status_code=404)
@@ -427,6 +427,19 @@ class Compra(BaseModel):
     forcar: bool = False
 
 
+def _sem_marca(texto: str) -> str:
+    """Mensagens para a tela sem o nome do fornecedor das etiquetas (vêm do emissao_shippo.py)."""
+    trocas = [
+        ("Compra não encontrada na Shippo", "Compra não encontrada"),
+        (": a Shippo recusa o reembolso.", ": o reembolso não é aceito."),
+        ("na Shippo", "no sistema de etiquetas"),
+    ]
+    for antes, depois in trocas:
+        texto = texto.replace(antes, depois)
+    texto = re.sub(r"\bShippo (\d{3}):", r"Erro \1 no sistema de etiquetas:", texto)
+    return re.sub(r"(?i)\bshippo\b", "sistema de etiquetas", texto)
+
+
 def _b64(dados: bytes) -> str:
     return base64.b64encode(dados).decode()
 
@@ -513,7 +526,7 @@ def comprar(dados: Compra, sessao: dict = Depends(exigir_emissao)):
             )
         except Exception as e:
             print(f"❌ Emissão pedido {num_pedido}: {e}", flush=True)
-            erro = str(e) if isinstance(e, RuntimeError) else f"Falha na emissão ({type(e).__name__})."
+            erro = _sem_marca(str(e)) if isinstance(e, RuntimeError) else f"Falha na emissão ({type(e).__name__})."
         finally:
             _planilha_mudou()
 
@@ -541,8 +554,10 @@ def consultar_reembolso(dados: Rastreio, sessao: dict = Depends(exigir_emissao))
         c = emi.consultar_reembolso(r)
     except Exception as e:
         print(f"❌ Consulta de reembolso: {type(e).__name__}", flush=True)
-        raise HTTPException(502, str(e) if isinstance(e, RuntimeError) else f"Falha ao consultar a Shippo ({type(e).__name__}).")
+        raise HTTPException(502, _sem_marca(str(e)) if isinstance(e, RuntimeError) else f"Falha ao consultar a compra ({type(e).__name__}).")
     c.pop("transacao", None)  # a tela não precisa do ID da compra
+    if c.get("bloqueio"):
+        c["bloqueio"] = _sem_marca(c["bloqueio"])
     return c
 
 
@@ -553,15 +568,15 @@ def confirmar_reembolso(dados: Rastreio, sessao: dict = Depends(exigir_emissao))
         try:
             c = emi.consultar_reembolso(r)  # consulta de novo: nunca confia no que veio da tela
             if c.get("bloqueio"):
-                raise HTTPException(409, c["bloqueio"])
+                raise HTTPException(409, _sem_marca(c["bloqueio"]))
             status = emi.pedir_reembolso(c["transacao"])
         except HTTPException:
             raise
         except Exception as e:
             print(f"❌ Reembolso: {type(e).__name__}", flush=True)
-            raise HTTPException(502, str(e) if isinstance(e, RuntimeError) else f"Falha ao pedir o reembolso ({type(e).__name__}).")
+            raise HTTPException(502, _sem_marca(str(e)) if isinstance(e, RuntimeError) else f"Falha ao pedir o reembolso ({type(e).__name__}).")
         if status == "ERROR":
-            raise HTTPException(409, "A Shippo recusou o reembolso (etiqueta usada ou já reembolsada).")
+            raise HTTPException(409, "O reembolso foi recusado (etiqueta usada ou já reembolsada).")
 
         # Pedido aceito: tira do painel (o tracker não monitora mais) e lança o negativo na auditoria
         df = _planilha(fresca=True)
