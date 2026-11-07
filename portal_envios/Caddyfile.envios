@@ -1,0 +1,14 @@
+# Cole este bloco no FIM de /opt/econsular/Caddyfile e recarregue o Caddy:
+#   docker exec econsular-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+# DNS: CNAME envios -> srv1980091.hstgr.cloud. (igual aos outros sistemas; já criado)
+envios.despa.digital {
+	encode gzip
+	request_body {
+		max_size 100MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy portal-envios:8080
+}

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Envios · D55</title>
+<link rel="icon" href="/static/simbolo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Roboto+Flex:opsz,wght@8..144,200..800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="/static/estilo.css">
+</head>
+<body>
+<div class="hud" aria-hidden="true"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i><i class="b b1"></i><i class="b b2"></i><i class="b b3"></i><i class="b b4"></i><i class="r r1"></i><i class="r r2"></i></div>
+
+<!-- ================= LOGIN ================= -->
+<main id="tela-login" class="login">
+  <div class="caixa login-caixa">
+    <img class="mark" src="/static/simbolo.svg" alt="">
+    <span class="eyebrow">[ acesso restrito ]</span>
+    <h1 class="h1-login">Painel de envios</h1>
+    <p class="sub">Digite a senha de acesso para continuar.</p>
+    <label class="campo"><span>Senha</span><input id="senha" class="inp" type="password" autocomplete="off"></label>
+    <p class="erro-txt" id="login-erro" role="alert"></p>
+    <button class="btn grande" id="b-entrar">Entrar <span class="seta">▸</span></button>
+  </div>
+  <div class="login-pe"><img class="wordmark" src="/static/wordmark-negativo.svg" alt="Despachante 55"></div>
+</main>
+
+<!-- ================= PAINEL ================= -->
+<div id="tela-app" hidden>
+<main class="shell">
+  <header class="top">
+    <h1 class="h1">Painel de envios</h1>
+    <div class="power-wrap">
+      <span class="mono" aria-hidden="true">Sair</span>
+      <button class="power" id="b-sair" aria-label="Sair do painel"><i class="material-icons">power_settings_new</i></button>
+    </div>
+    <img class="mark-topo" src="/static/simbolo.svg" alt="">
+  </header>
+
+  <section class="hero">
+    <div>
+      <img class="wordmark" src="/static/wordmark-negativo.svg" alt="Despachante 55">
+    </div>
+  </section>
+
+  <nav class="abas" role="tablist" aria-label="Seções do painel">
+    <button class="aba" role="tab" id="t-emitir" aria-controls="p-emitir" aria-selected="false" tabindex="-1"><span class="aba-nome" data-t="Emitir etiquetas">Emitir etiquetas</span><span class="aba-barra" aria-hidden="true"><i></i></span></button>
+    <button class="aba" role="tab" id="t-acomp" aria-controls="p-acomp" aria-selected="true"><span class="aba-nome" data-t="Acompanhamento">Acompanhamento</span><span class="aba-barra" aria-hidden="true"><i></i></span></button>
+    <button class="aba" role="tab" id="t-antigo" aria-controls="p-antigo" aria-selected="false" tabindex="-1"><span class="aba-nome" data-t="Rastreio antigo">Rastreio antigo</span><span class="aba-barra" aria-hidden="true"><i></i></span></button>
+    <button class="aba" role="tab" id="t-foto" aria-controls="p-foto" aria-selected="false" tabindex="-1"><span class="aba-nome" data-t="Foto dos selos">Foto dos selos</span><span class="aba-barra" aria-hidden="true"><i></i></span></button>
+  </nav>
+
+  <!-- ---------- EMITIR ---------- -->
+  <section class="painel-aba" id="p-emitir" role="tabpanel" aria-labelledby="t-emitir" hidden>
+    <div class="caixa" id="emi-gate" hidden>
+      <div class="caixa-topo"><h2 class="h2">Emissão protegida</h2><i class="material-icons" style="color:var(--muted)">lock</i></div>
+      <p class="nota">Aqui se compra etiqueta com dinheiro real. Digite a senha da emissão para liberar.</p>
+      <div class="linha-form">
+        <label class="campo"><span>Senha da emissão</span><input id="emi-senha" class="inp" type="password" autocomplete="off"></label>
+        <button class="btn" id="b-liberar"><i class="material-icons">lock_open</i>Liberar</button>
+      </div>
+      <p class="erro-txt" id="emi-gate-erro" role="alert"></p>
+    </div>
+    <div id="emi-corpo" class="painel-aba" hidden>
+    <div class="caixa">
+      <div class="linha-topo">
+        <label class="campo"><span>Número do pedido / ID Bitrix *</span><input id="emi-pedido" class="inp mono-inp" inputmode="numeric" placeholder="Ex.: 86034" autocomplete="off"></label>
+        <div class="teto" aria-label="Teto diário de compras">
+          <div class="medidor"><div class="medidor-topo"><span class="rotulo">Etiquetas hoje</span><b id="teto-qtd"></b></div><div class="trilho" id="trilho-qtd"><i></i></div></div>
+          <div class="medidor"><div class="medidor-topo"><span class="rotulo">Gasto hoje</span><b id="teto-gasto"></b></div><div class="trilho" id="trilho-gasto"><i></i></div></div>
+        </div>
+      </div>
+      <div class="campo"><span>Tipo de envio</span><div class="seg" id="seg-modo" role="radiogroup" aria-label="Tipo de envio"></div></div>
+      <div class="campo" id="w-quais" hidden><span>Etiquetas</span><div class="seg" id="seg-quais" role="radiogroup" aria-label="Quais etiquetas"></div></div>
+      <div class="g2">
+        <label class="campo" id="w-cons" hidden><span>Consulado</span><select id="sel-cons" class="inp"></select></label>
+        <label class="campo" id="w-dpt" hidden><span>Departamento de estado</span><select id="sel-dpt" class="inp"></select></label>
+      </div>
+    </div>
+
+    <div class="caixa" id="w-end">
+      <div class="caixa-topo"><span class="eyebrow" id="end-titulo">Endereço do cliente</span><span class="mono" id="leituras"></span></div>
+      <div class="g2">
+        <label class="drop" id="emi-drop"><i class="material-icons">upload_file</i><span id="emi-drop-txt">Comprovante de residência ou Driver's License<br><small class="mono">jpg · png · pdf · até 15 MB</small></span><input type="file" id="emi-arq" accept="image/*,.pdf"></label>
+        <label class="campo"><span>…ou cole o nome e o endereço</span><textarea id="emi-txt" class="inp" placeholder="MARIA TESTE DA SILVA&#10;123 MAIN ST APT 4B&#10;NEWARK, NJ 07105"></textarea></label>
+      </div>
+      <div><button class="btn sec" id="b-ler"><i class="material-icons">auto_awesome</i>Ler endereço com IA</button></div>
+      <p class="nota">Confira e corrija antes de comprar:</p>
+      <div class="g3" id="campos"></div>
+    </div>
+
+    <div id="emi-avisos" class="painel-aba" style="gap:12px"></div>
+    <button class="btn grande" id="b-comprar"></button>
+    <div id="emi-resultado" class="painel-aba"></div>
+
+    <div class="caixa">
+      <div class="caixa-topo"><h2 class="h2">Cancelar etiqueta (reembolso)</h2><i class="material-icons" style="color:var(--muted)">undo</i></div>
+      <p class="nota">Só etiquetas emitidas por esta aba, ainda não escaneadas pela USPS e com até 90 dias. O valor volta como crédito na próxima fatura da Shippo.</p>
+      <div class="linha-form">
+        <label class="campo"><span>Rastreio da etiqueta</span><input id="ree-r" class="inp mono-inp" inputmode="numeric" autocomplete="off" placeholder="22 dígitos"></label>
+        <button class="btn sec" id="b-ree"><i class="material-icons">search</i>Consultar</button>
+      </div>
+      <div id="ree-res"></div>
+    </div>
+    </div>
+  </section>
+
+  <!-- ---------- ACOMPANHAMENTO ---------- -->
+  <section class="painel-aba" id="p-acomp" role="tabpanel" aria-labelledby="t-acomp">
+    <div class="kpis" id="kpis"></div>
+    <div class="graficos">
+      <div class="grafico"><h2 class="h3">Distribuição de status</h2>
+        <div class="rosca-wrap"><svg class="rosca" id="g-rosca" viewBox="0 0 220 220" role="img"></svg></div>
+        <ul class="legenda" id="g-legenda"></ul></div>
+      <div class="grafico"><h2 class="h3">Volume por categoria</h2><div class="barras" id="g-barras"></div><div class="barras-rot" id="g-barras-rot"></div></div>
+    </div>
+    <div class="caixa">
+      <div class="caixa-topo"><h2 class="h2">Histórico detalhado</h2><span class="mono" id="contagem"></span></div>
+      <div class="toolbar">
+        <label class="campo"><span>Buscar por nº do pedido ou nome do cliente</span>
+          <span class="inp-icone"><i class="material-icons">search</i><input id="busca" class="inp" list="opcoes" placeholder="Digite o número ou o nome" autocomplete="off"><button class="limpar" id="b-limpar" aria-label="Limpar busca" hidden><i class="material-icons">close</i></button></span>
+          <datalist id="opcoes"></datalist>
+        </label>
+        <div class="toolbar-acoes">
+          <button class="btn sec" id="b-recarregar"><i class="material-icons">refresh</i>Recarregar</button>
+          <button class="btn sec" id="b-bitrix"><i class="material-icons">link</i>Sincronizar links Bitrix</button>
+          <button class="btn sec" id="b-usps"><i class="material-icons">bolt</i>Atualizar status USPS</button>
+        </div>
+      </div>
+      <div id="barra-imp"></div>
+      <div id="barra-exc"></div>
+      <div class="tabela-wrap">
+        <table class="t-envios">
+          <thead><tr><th class="c">Imprimir</th><th>Data</th><th>Pedido</th><th>Tarefa</th><th>Nome</th><th>Rastreio</th><th>Tipo</th><th>Status</th><th>Últ. atualização</th><th class="c">Excluir</th></tr></thead>
+          <tbody id="corpo"></tbody>
+        </table>
+      </div>
+      <div class="rodape-tabela"><span class="nota"><span class="marca-hoje" aria-hidden="true"></span>Linhas em destaque: atualizadas hoje.</span><span class="mono">entregues saem do painel 15 dias após a entrega</span></div>
+    </div>
+  </section>
+
+  <!-- ---------- RASTREIO ANTIGO ---------- -->
+  <section class="painel-aba" id="p-antigo" role="tabpanel" aria-labelledby="t-antigo" hidden>
+    <div class="caixa">
+      <div class="caixa-topo"><h2 class="h2">Cadastrar etiqueta antiga</h2><i class="material-icons" style="color:var(--muted)">inventory_2</i></div>
+      <p class="nota">Insira os dados de um envio feito por fora para ele ser monitorado.</p>
+      <div class="campo"><span>Tipo de envio</span><div class="seg" id="seg-antigo" role="radiogroup" aria-label="Tipo de envio"></div></div>
+      <div id="antigo-info"></div>
+      <div class="g2">
+        <label class="campo"><span>Número do pedido / ID Bitrix *</span><input id="ant-pedido" class="inp mono-inp" inputmode="numeric" placeholder="Ex.: 262" autocomplete="off"></label>
+        <label class="campo"><span>Nome do cliente *</span><input id="ant-nome" class="inp" placeholder="Ex.: Rodrigo Silva" autocomplete="off"></label>
+      </div>
+      <div class="g3">
+        <label class="campo"><span id="ant-r1-rot">Rastreio USPS *</span><input id="ant-r1" class="inp mono-inp" inputmode="numeric" placeholder="Ex.: 94055502…" autocomplete="off"></label>
+        <label class="campo" id="w-ant-r2" hidden><span id="ant-r2-rot">Rastreio USPS – volta *</span><input id="ant-r2" class="inp mono-inp" inputmode="numeric" placeholder="Ex.: 94055502…" autocomplete="off"></label>
+        <label class="campo"><span>Data de criação da etiqueta *</span><input id="ant-data" class="inp" type="date"></label>
+      </div>
+      <div><button class="btn" id="b-antigo"><i class="material-icons">add</i>Adicionar ao monitoramento</button></div>
+    </div>
+
+    <details class="caixa dobra" id="dobra-228">
+      <summary><span class="h2">Preencher Label 228 (passaporte)</span><i class="material-icons">expand_more</i></summary>
+      <div class="dobra-corpo">
+        <label class="campo"><span>Consulado (remetente – FROM)</span><select id="l228-cons" class="inp"></select></label>
+        <div class="g2">
+          <label class="drop" id="l228-drop"><i class="material-icons">upload_file</i><span id="l228-drop-txt">Comprovante de residência ou Driver's License<br><small class="mono">jpg · png · pdf</small></span><input type="file" id="l228-arq" accept="image/*,.pdf"></label>
+          <label class="campo"><span>…ou cole o nome e o endereço do cliente</span><textarea id="l228-txt" class="inp" placeholder="JOHN SAMPLE DOE&#10;742 EVERGREEN TERRACE APT 2&#10;SPRINGFIELD, IL 62704"></textarea></label>
+        </div>
+        <div><button class="btn" id="b-228"><i class="material-icons">label</i>Gerar label</button></div>
+        <div id="l228-res"></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ---------- FOTO DOS SELOS ---------- -->
+  <section class="painel-aba" id="p-foto" role="tabpanel" aria-labelledby="t-foto" hidden>
+    <div class="caixa">
+      <div class="caixa-topo"><h2 class="h2">Adicionar foto dos selos</h2><span class="mono">IA lê pedido e rastreio</span></div>
+      <p class="nota">Envie a foto dos recibos da USPS com o número do pedido escrito à mão. Cada etiqueta entra como <b style="color:var(--text)">Con - Cli</b>.</p>
+      <label class="drop" id="foto-drop"><i class="material-icons">add_a_photo</i><span id="foto-drop-txt">Arraste ou escolha as fotos das etiquetas<br><small class="mono">várias de uma vez · jpg · png</small></span><input type="file" id="foto-arq" accept="image/*" multiple></label>
+      <div class="chips"><button class="btn" id="b-ler-fotos"><i class="material-icons">document_scanner</i>Ler etiquetas</button><span class="nota">Até 20 fotos por vez.</span></div>
+    </div>
+    <div id="foto-res" class="painel-aba" hidden>
+      <div class="caixa">
+        <span class="eyebrow">Corrija o que a IA leu errado</span>
+        <div class="tabela-wrap"><table style="min-width:560px"><thead><tr><th class="c">Salvar</th><th>Pedido / ID Bitrix</th><th>Rastreio USPS</th></tr></thead><tbody id="foto-edit"></tbody></table></div>
+      </div>
+      <div class="caixa">
+        <div class="caixa-topo"><span class="eyebrow">Conferência</span></div>
+        <p class="nota">Confira se o nome é mesmo do cliente do pedido: é a proteção contra número manuscrito lido errado.</p>
+        <div class="tabela-wrap"><table style="min-width:720px"><thead><tr><th>Pedido</th><th>Nome</th><th>Rastreio</th><th>Situação</th></tr></thead><tbody id="foto-conf"></tbody></table></div>
+        <label class="check"><input type="checkbox" id="foto-susp"> Salvar também as linhas com ⚠️</label>
+        <button class="btn grande" id="b-foto-salvar"></button>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
