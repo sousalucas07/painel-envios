@@ -86,10 +86,24 @@ function baixar(blob, nome) {
 }
 
 /* ============ LOGIN ============ */
+// Olho de mostrar/ocultar senha (login e senha da emissão)
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.olho'); if (!b) return;
+  e.preventDefault();
+  const inp = b.parentElement.querySelector('input'), mostrar = inp.type === 'password';
+  inp.type = mostrar ? 'text' : 'password';
+  b.querySelector('.material-icons').textContent = mostrar ? 'visibility' : 'visibility_off';
+  b.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
+  inp.focus();
+});
+function ocultarSenhas() { // ao sair ou reabrir o login, a senha volta a ficar escondida
+  $$('.inp-senha input').forEach((i) => { i.type = 'password'; });
+  $$('.olho').forEach((b) => { b.querySelector('.material-icons').textContent = 'visibility_off'; b.setAttribute('aria-label', 'Mostrar senha'); });
+}
 const estado = { emissao: false };
 function mostrarLogin(msg = '') {
   $('#tela-app').hidden = true; $('#tela-login').hidden = false;
-  $('#login-erro').textContent = msg; $('#senha').value = ''; $('#senha').focus();
+  $('#login-erro').textContent = msg; $('#senha').value = ''; ocultarSenhas(); $('#senha').focus();
 }
 function entrarApp(s) {
   estado.emissao = !!s.emissao;

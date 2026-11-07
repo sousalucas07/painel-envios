@@ -18,10 +18,9 @@
 <main id="tela-login" class="login">
   <div class="caixa login-caixa">
     <img class="mark" src="/static/simbolo.svg" alt="">
-    <span class="eyebrow">[ acesso restrito ]</span>
     <h1 class="h1-login">Painel de envios</h1>
     <p class="sub">Digite a senha de acesso para continuar.</p>
-    <label class="campo"><span>Senha</span><input id="senha" class="inp" type="password" autocomplete="off"></label>
+    <label class="campo"><span>Senha</span><span class="inp-senha"><input id="senha" class="inp" type="password" autocomplete="current-password"><button class="olho" type="button" aria-label="Mostrar senha"><i class="material-icons">visibility_off</i></button></span></label>
     <p class="erro-txt" id="login-erro" role="alert"></p>
     <button class="btn grande" id="b-entrar">Entrar <span class="seta">▸</span></button>
   </div>
@@ -59,7 +58,7 @@
       <div class="caixa-topo"><h2 class="h2">Emissão protegida</h2><i class="material-icons" style="color:var(--muted)">lock</i></div>
       <p class="nota">Aqui se compra etiqueta com dinheiro real. Digite a senha da emissão para liberar.</p>
       <div class="linha-form">
-        <label class="campo"><span>Senha da emissão</span><input id="emi-senha" class="inp" type="password" autocomplete="off"></label>
+        <label class="campo"><span>Senha da emissão</span><span class="inp-senha"><input id="emi-senha" class="inp" type="password" autocomplete="off"><button class="olho" type="button" aria-label="Mostrar senha"><i class="material-icons">visibility_off</i></button></span></label>
         <button class="btn" id="b-liberar"><i class="material-icons">lock_open</i>Liberar</button>
       </div>
       <p class="erro-txt" id="emi-gate-erro" role="alert"></p>
