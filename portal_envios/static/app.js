@@ -174,7 +174,7 @@ function renderKpis() {
   const total = linhas.length;
   const pct = (v) => (total ? Math.round((v / total) * 100) : 0) + '%';
   const blocos = [
-    { r: 'Total', v: total, cor: 'var(--line-2)', p: `${new Set(linhas.map((l) => l.pedido)).size} pedidos` },
+    { r: 'Total', v: total, cor: 'var(--line-2)', p: '' },
     { r: 'Em trânsito', v: cont['Em trânsito'], cor: 'var(--blue-2)', p: pct(cont['Em trânsito']) },
     { r: 'Entregues', v: cont['Entregues'], cor: 'var(--verde)', p: pct(cont['Entregues']) },
     { r: 'Pendentes de envio', v: cont['Pendentes de envio'], cor: 'var(--salmao)', p: pct(cont['Pendentes de envio']) },
