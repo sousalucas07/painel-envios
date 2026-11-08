@@ -289,17 +289,24 @@ PRAZOS_SLA = {
     "CONSULADO_CLIENTE": (70, "criacao"),
 }
 
-def tarefa_sla_existe(rastreio):
-    """Já existe tarefa de SLA para este rastreio no Bitrix? Na dúvida responde True (não duplica)."""
+LINK_RASTREIO_USPS = "https://tools.usps.com/go/TrackConfirmAction?tLabels="
+
+def tarefa_sla_existe(deal_id, rastreio):
+    """Já existe tarefa de SLA deste rastreio no negócio? Na dúvida responde True (não duplica).
+
+    Procura nas tarefas de alerta do negócio: o rastreio aparece no título (tarefas antigas)
+    ou no link da descrição (tarefas novas).
+    """
     try:
         res = requests.post(
             f"{WEBHOOK_URL.rstrip('/')}/tasks.task.list.json",
-            json={"filter": {"%TITLE": rastreio}, "select": ["ID", "TITLE"]},
+            json={"filter": {"UF_CRM_TASK": f"D_{deal_id}", "%TITLE": "ALERTA (+"},
+                  "select": ["ID", "TITLE", "DESCRIPTION"]},
             timeout=10,
         )
         res.raise_for_status()
         tarefas = res.json().get("result", {}).get("tasks", [])
-        return any("ALERTA (+" in str(t.get("title", "")).upper() for t in tarefas)
+        return any(rastreio in f"{t.get('title', '')} {t.get('description', '')}" for t in tarefas)
     except Exception as e:
         print(f"   ⚠️ Não consegui checar tarefas de SLA no Bitrix ({type(e).__name__}); alerta adiado.", flush=True)
         return True
@@ -328,13 +335,14 @@ def dias_atrasado(tipo_envio, status, data_saida, data_criacao_str, agora=None):
 
 def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criacao_str):
     atraso = dias_atrasado(tipo_envio, status, data_saida, data_criacao_str)
-    if not atraso or not deal_id or tarefa_sla_existe(rastreio):
+    if not atraso or not deal_id or tarefa_sla_existe(deal_id, rastreio):
         return
     prazo, dias = atraso
     criar_tarefa_bitrix(
         deal_id,
-        f"⚠️ ALERTA (+{prazo} dias): {tipo_envio} - Negócio #{deal_id} - {rastreio}",
-        f"Envio {tipo_envio} sem entrega há {dias} dias (prazo: {prazo}).\nStatus atual: {status}",
+        f"⚠️ ALERTA (+{prazo} dias): {tipo_envio} - Negócio #{deal_id}",
+        f"Envio {tipo_envio} sem entrega há {dias} dias (prazo: {prazo}).\nStatus atual: {status}"
+        f"\nRastreio: {LINK_RASTREIO_USPS}{rastreio}",
     )
 
 # ==============================================================================
