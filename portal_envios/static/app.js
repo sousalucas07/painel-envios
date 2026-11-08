@@ -148,9 +148,11 @@ abas.forEach((a, i) => {
 /* ============ ACOMPANHAMENTO ============ */
 let linhas = [], HOJE = '';
 let filtroStatus = 'todos', atrasos = null; // atrasos: { numero: {prazo, dias} } (null = ainda carregando)
-// Mesma classificação do dashboard.py (a última regra que bate vence)
-function categoria(s) {
-  const u = String(s).toUpperCase(); let c = 'Erros / atraso';
+// Exceção primeiro: status com problema (mesmas palavras das tarefas de exceção) ou atrasado (SLA).
+// Depois, a classificação do dashboard.py (a última regra que bate vence).
+function categoria(l) {
+  if (l.problema || (atrasos && atrasos[l.numero])) return 'Erros / atraso';
+  const u = String(l.status).toUpperCase(); let c = 'Erros / atraso';
   if (/DELIVERED|ENTREGUE|PICKED UP/.test(u)) c = 'Entregues';
   if (/TRANSIT|WAY|ACCEPT|PROGRESS|GERADA|COLETA|OUT FOR DELIVERY/.test(u)) c = 'Em trânsito';
   if (/ERROR|ALERT|DEVOLVIDO|UNAVAILABLE|AGUARDANDO|PRE TRANSIT/.test(u)) c = 'Pendentes de envio';
@@ -162,7 +164,7 @@ const CATS = [
   { nome: 'Em trânsito', cor: 'var(--blue-2)' },
   { nome: 'Erros / atraso', cor: 'var(--muted)' },
 ];
-const corDe = (s) => CATS.find((c) => c.nome === categoria(s)).cor;
+const corDe = (l) => CATS.find((c) => c.nome === categoria(l)).cor;
 const sel = { imp: new Set(), exc: new Set() };
 let pdfPronto = null; // { chave, blob, nao }
 
@@ -179,7 +181,7 @@ async function carregarEnvios() {
 }
 async function carregarAtrasos() { // consulta mais lenta (USPS): roda depois, sem travar a tabela
   try { atrasos = (await api('/api/envios/atrasados')).atrasados; } catch (e) { if (!silencioso(e)) atrasos = {}; }
-  renderFiltros(); renderTabela();
+  renderKpis(); renderFiltros(); renderTabela(); // o gráfico passa a contar os atrasados
 }
 function porBusca() {
   const q = $('#busca').value.trim().toUpperCase();
@@ -193,9 +195,9 @@ const FILTROS = [
   { id: 'todos', nome: 'Todos', teste: () => true },
   { id: 'problema', nome: 'Com problema', teste: (l) => l.problema },
   { id: 'atrasados', nome: 'Atrasados (SLA)', teste: (l) => !!(atrasos && atrasos[l.numero]) },
-  { id: 'Em trânsito', nome: 'Em trânsito', teste: (l) => categoria(l.status) === 'Em trânsito' },
-  { id: 'Entregues', nome: 'Entregues', teste: (l) => categoria(l.status) === 'Entregues' },
-  { id: 'Pendentes de envio', nome: 'Pendentes', teste: (l) => categoria(l.status) === 'Pendentes de envio' },
+  { id: 'Em trânsito', nome: 'Em trânsito', teste: (l) => categoria(l) === 'Em trânsito' },
+  { id: 'Entregues', nome: 'Entregues', teste: (l) => categoria(l) === 'Entregues' },
+  { id: 'Pendentes de envio', nome: 'Pendentes', teste: (l) => categoria(l) === 'Pendentes de envio' },
 ];
 function filtradas() {
   const f = FILTROS.find((x) => x.id === filtroStatus) || FILTROS[0];
@@ -211,7 +213,7 @@ function renderFiltros() {
 $('#filtros').addEventListener('change', (e) => { filtroStatus = e.target.value; renderTabela(); });
 function renderKpis() {
   const cont = Object.fromEntries(CATS.map((c) => [c.nome, 0]));
-  linhas.forEach((l) => { cont[categoria(l.status)]++; });
+  linhas.forEach((l) => { cont[categoria(l)]++; });
   const total = linhas.length;
   const pct = (v) => (total ? Math.round((v / total) * 100) : 0) + '%';
   const blocos = [
@@ -264,7 +266,7 @@ function renderTabela() {
       <td class="quebra">${esc(l.nome)}</td>
       <td>${rastreio}</td>
       <td><span class="tipo">${esc(l.tipo)}</span></td>
-      <td class="quebra st"><span class="status" title="${esc(l.status)}"><span class="ponto" style="--c:${corDe(l.status)}"></span><span>${esc(l.status)}${atrasos && atrasos[n] ? `<span class="atraso" title="Prazo de ${atrasos[n].prazo} dias">+${atrasos[n].dias} dias</span>` : ''}</span></span></td>
+      <td class="quebra st"><span class="status" title="${esc(l.status)}"><span class="ponto" style="--c:${corDe(l)}"></span><span>${esc(l.status)}${atrasos && atrasos[n] ? `<span class="atraso" title="Prazo de ${atrasos[n].prazo} dias">+${atrasos[n].dias} dias</span>` : ''}</span></span></td>
       <td class="num fraco">${esc(l.ult)}</td>
       <td class="c"><input type="checkbox" data-acao="exc" data-r="${n}" aria-label="Excluir linha do pedido ${esc(l.pedido)} ${esc(l.tipo)}"${sel.exc.has(n) ? ' checked' : ''}${ok ? '' : ' disabled'}></td>
     </tr>`;
