@@ -295,11 +295,50 @@ def envios(sessao: dict = Depends(exigir_login)):
     for _, linha in df.iterrows():
         item = {k: (str(linha[c]).strip() if c else "") for k, c in mapa.items()}
         item["numero"] = _num_rastreio(item["rastreio"])
+        item["problema"] = any(p in item["status"].upper() for p in tracker.PALAVRAS_ERRO)
         if not item["tarefa"].startswith("http"):
             item["tarefa"] = ""
         linhas.append(item)
     linhas.sort(key=lambda x: x["ult"], reverse=True)  # mais recentes primeiro, como no painel atual
     return {"linhas": linhas, "hoje": sheets.agora_br().strftime("%Y-%m-%d")}
+
+
+_cache_atrasos = {"t": 0.0, "dados": None}
+_trava_atrasos = threading.Lock()
+
+
+def _atraso_da_linha(linha):
+    """(numero, {"prazo", "dias"}) se o envio passou do prazo de SLA, pela mesma regra das tarefas."""
+    tipo, status, numero = linha["tipo"], linha["status"], linha["numero"]
+    regra = tracker.PRAZOS_SLA.get(tracker.classificar_envio(tipo))
+    if not numero or not regra:
+        return None
+    _, base = regra
+    data_saida = None
+    if base == "saida":
+        if not status.upper().startswith("TRANSIT"):
+            return None  # ainda em pré-envio (não conta) ou já entregue
+        try:
+            _, _, data_saida, _ = tracker.consultar_shippo(numero)
+        except Exception:
+            return None
+    atraso = tracker.dias_atrasado(tipo, status, data_saida, linha["data"])
+    return (numero, {"prazo": atraso[0], "dias": atraso[1]}) if atraso else None
+
+
+@app.get("/api/envios/atrasados")
+def atrasados(sessao: dict = Depends(exigir_login)):
+    """Envios atrasados (SLA). Consulta a USPS só dos que estão em trânsito; guarda por 10 min."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with _trava_atrasos:
+        if _cache_atrasos["dados"] is not None and time.time() - _cache_atrasos["t"] < 600:
+            return {"atrasados": _cache_atrasos["dados"]}
+        linhas = envios(sessao)["linhas"]
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            achados = [r for r in pool.map(_atraso_da_linha, linhas) if r]
+        _cache_atrasos.update(dados=dict(achados), t=time.time())
+        return {"atrasados": _cache_atrasos["dados"]}
 
 
 class Rastreios(BaseModel):

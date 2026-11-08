@@ -147,6 +147,7 @@ abas.forEach((a, i) => {
 
 /* ============ ACOMPANHAMENTO ============ */
 let linhas = [], HOJE = '';
+let filtroStatus = 'todos', atrasos = null; // atrasos: { numero: {prazo, dias} } (null = ainda carregando)
 // Mesma classificação do dashboard.py (a última regra que bate vence)
 function categoria(s) {
   const u = String(s).toUpperCase(); let c = 'Erros / atraso';
@@ -173,15 +174,41 @@ async function carregarEnvios() {
     const existentes = new Set(linhas.map((l) => l.numero));
     [sel.imp, sel.exc].forEach((s) => s.forEach((n) => { if (!existentes.has(n)) s.delete(n); }));
     renderAcomp();
+    carregarAtrasos();
   } catch (e) { if (!silencioso(e)) { $('#contagem').textContent = '[ erro ao carregar ]'; toast(esc(e.message), 'erro'); } }
 }
-function filtradas() {
+async function carregarAtrasos() { // consulta mais lenta (USPS): roda depois, sem travar a tabela
+  try { atrasos = (await api('/api/envios/atrasados')).atrasados; } catch (e) { if (!silencioso(e)) atrasos = {}; }
+  renderFiltros(); renderTabela();
+}
+function porBusca() {
   const q = $('#busca').value.trim().toUpperCase();
   if (!q) return linhas;
   const m = q.match(/^(\d+)\s*·/);
   if (m) return linhas.filter((l) => l.pedido === m[1]);
   return linhas.filter((l) => l.pedido.includes(q) || l.nome.toUpperCase().includes(q));
 }
+// Filtros por situação (somam com a busca)
+const FILTROS = [
+  { id: 'todos', nome: 'Todos', teste: () => true },
+  { id: 'problema', nome: 'Com problema', teste: (l) => l.problema },
+  { id: 'atrasados', nome: 'Atrasados (SLA)', teste: (l) => !!(atrasos && atrasos[l.numero]) },
+  { id: 'Em trânsito', nome: 'Em trânsito', teste: (l) => categoria(l.status) === 'Em trânsito' },
+  { id: 'Entregues', nome: 'Entregues', teste: (l) => categoria(l.status) === 'Entregues' },
+  { id: 'Pendentes de envio', nome: 'Pendentes', teste: (l) => categoria(l.status) === 'Pendentes de envio' },
+];
+function filtradas() {
+  const f = FILTROS.find((x) => x.id === filtroStatus) || FILTROS[0];
+  return porBusca().filter(f.teste);
+}
+function renderFiltros() {
+  const base = porBusca();
+  $('#filtros').innerHTML = FILTROS.map((f) => {
+    const n = f.id === 'atrasados' && atrasos === null ? '…' : base.filter(f.teste).length;
+    return `<label><input type="radio" name="filtro" value="${esc(f.id)}"${f.id === filtroStatus ? ' checked' : ''}><span>${f.nome}<b>${n}</b></span></label>`;
+  }).join('');
+}
+$('#filtros').addEventListener('change', (e) => { filtroStatus = e.target.value; renderTabela(); });
 function renderKpis() {
   const cont = Object.fromEntries(CATS.map((c) => [c.nome, 0]));
   linhas.forEach((l) => { cont[categoria(l.status)]++; });
@@ -218,8 +245,13 @@ function renderOpcoes() {
 function renderTabela() {
   const vis = filtradas(), q = $('#busca').value.trim();
   $('#b-limpar').hidden = !q;
-  $('#contagem').textContent = q ? `[ ${vis.length} de ${linhas.length} envios ]` : `[ ${linhas.length} envios ]`;
-  if (!vis.length) { $('#corpo').innerHTML = `<tr><td class="vazio" colspan="10">${q ? `Nenhum envio encontrado para “${esc(q)}”.` : 'Nenhuma etiqueta cadastrada na planilha ainda.'}</td></tr>`; return; }
+  const filtrando = q || filtroStatus !== 'todos';
+  $('#contagem').textContent = filtrando ? `[ ${vis.length} de ${linhas.length} envios ]` : `[ ${linhas.length} envios ]`;
+  if (!vis.length) {
+    const msg = filtroStatus === 'atrasados' && atrasos === null ? 'Conferindo os prazos na USPS…'
+      : filtrando ? 'Nenhum envio encontrado com esse filtro.' : 'Nenhuma etiqueta cadastrada na planilha ainda.';
+    $('#corpo').innerHTML = `<tr><td class="vazio" colspan="10">${msg}</td></tr>`; return;
+  }
   $('#corpo').innerHTML = vis.map((l) => {
     const n = l.numero, ok = !!n, hoje = HOJE && l.ult.startsWith(HOJE);
     const tarefa = l.tarefa.startsWith('https://') ? `<a class="lnk" href="${esc(l.tarefa)}" target="_blank" rel="noopener"><i class="material-icons">open_in_new</i>Abrir</a>` : '<span class="mono">—</span>';
@@ -232,7 +264,7 @@ function renderTabela() {
       <td class="quebra">${esc(l.nome)}</td>
       <td>${rastreio}</td>
       <td><span class="tipo">${esc(l.tipo)}</span></td>
-      <td class="quebra st"><span class="status" title="${esc(l.status)}"><span class="ponto" style="--c:${corDe(l.status)}"></span><span>${esc(l.status)}</span></span></td>
+      <td class="quebra st"><span class="status" title="${esc(l.status)}"><span class="ponto" style="--c:${corDe(l.status)}"></span><span>${esc(l.status)}${atrasos && atrasos[n] ? `<span class="atraso" title="Prazo de ${atrasos[n].prazo} dias">+${atrasos[n].dias} dias</span>` : ''}</span></span></td>
       <td class="num fraco">${esc(l.ult)}</td>
       <td class="c"><input type="checkbox" data-acao="exc" data-r="${n}" aria-label="Excluir linha do pedido ${esc(l.pedido)} ${esc(l.tipo)}"${sel.exc.has(n) ? ' checked' : ''}${ok ? '' : ' disabled'}></td>
     </tr>`;
@@ -257,10 +289,10 @@ function renderBarras() {
       <span>Selecionados para exclusão: <b>${exc.map(descricao).join(', ')}</b></span>
       <div class="acoes"><button class="btn perigo" id="b-excluir">Confirmar exclusão</button><button class="btn sec" id="b-limpar-exc">Cancelar</button></div></div></div>` : '';
 }
-function renderAcomp() { renderKpis(); renderOpcoes(); renderTabela(); renderBarras(); }
+function renderAcomp() { renderKpis(); renderOpcoes(); renderFiltros(); renderTabela(); renderBarras(); }
 
-$('#busca').addEventListener('input', renderTabela);
-$('#b-limpar').addEventListener('click', () => { $('#busca').value = ''; renderTabela(); $('#busca').focus(); });
+$('#busca').addEventListener('input', () => { renderFiltros(); renderTabela(); });
+$('#b-limpar').addEventListener('click', () => { $('#busca').value = ''; renderFiltros(); renderTabela(); $('#busca').focus(); });
 $('#corpo').addEventListener('change', (e) => {
   const cb = e.target.closest('input[data-acao]'); if (!cb || !cb.dataset.r) return;
   const s = sel[cb.dataset.acao];
