@@ -105,13 +105,13 @@ def _mensagens(obj):
     return "; ".join(m.get("text", "") for m in obj.get("messages") or []) or "sem detalhes"
 
 
-def cotar(origem, destino, referencia):
+def cotar(origem, destino, referencia, num_pedido):
     """Cria o shipment e devolve a tarifa do SERVICO (sem cobrar nada)."""
     shp = _shippo("/shipments/", {
         "address_from": {"email": ESCRITORIO["email"], **origem},
         "address_to": {"email": ESCRITORIO["email"], **destino},
         "parcels": [PACOTE],
-        "extra": {"reference_1": referencia},  # sai na etiqueta, como o "Order:" da ShippingEasy
+        "extra": {"reference_1": str(num_pedido)},  # sai impresso na etiqueta: só o número do pedido
         "metadata": referencia, "async": False,
     })
     rates = shp.get("rates") or []
@@ -153,7 +153,7 @@ def emitir(modo, num_pedido, cliente=None, consulado=None, departamento=None, ao
     etiquetas = []
     for tipo, de, para in trechos or MODOS[modo]:
         referencia = f"{num_pedido} {tipo}"
-        rate = cotar(enderecos[de], enderecos[para], referencia)
+        rate = cotar(enderecos[de], enderecos[para], referencia, num_pedido)
         if antes_de_pagar:
             antes_de_pagar(rate)
         rastreio, url, custo = comprar(rate, referencia)
