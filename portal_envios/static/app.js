@@ -476,7 +476,7 @@ $('#b-comprar').addEventListener('click', async (e) => {
     <span class="mono">${esc(c.rastreio)}</span>
     <button class="btn sec" data-pdf="${i}"><i class="material-icons">download</i>Baixar PDF para imprimir</button></div>`);
   if (r.label_228) cards.push(`<div class="etq-card"><div class="etq-info"><b>Label 228</b><span>envelope</span></div>
-    <img class="etq-img" src="data:image/png;base64,${r.label_228}" alt="Label 228"><button class="btn sec" data-l228="1"><i class="material-icons">download</i>Baixar Label 228</button></div>`);
+    <img class="etq-img" src="data:image/png;base64,${r.label_228}" alt="Label 228"><button class="btn sec" data-l228="1"><i class="material-icons">download</i>Baixar Label 228 (PDF)</button></div>`);
   const ok = r.etiquetas.length ? `<p class="alerta ok"><i class="material-icons">check_circle</i><span>${r.etiquetas.length} etiqueta${r.etiquetas.length > 1 ? 's' : ''} do pedido <b>#${esc(r.pedido)}</b> compradas e registradas. O PDF sai deitado na metade de cima da folha: imprima em tamanho real (100%).</span></p>` : '';
   const erro = r.erro ? `<p class="alerta erro"><i class="material-icons">error</i><span>${esc(r.erro)}</span></p>` : '';
   $('#emi-resultado').innerHTML = ok + erro + (cards.length ? `<div class="resultado">${cards.join('')}</div>` : '');
@@ -488,7 +488,7 @@ $('#emi-resultado').addEventListener('click', (e) => {
   const r = $('#emi-resultado')._dados; if (!r) return;
   const bp = e.target.closest('[data-pdf]'), bl = e.target.closest('[data-l228]');
   if (bp) { const c = r.etiquetas[Number(bp.dataset.pdf)]; baixar(b64Blob(c.pdf, 'application/pdf'), `Etiqueta_${r.pedido}_${c.tipo.replace(/\s/g, '')}.pdf`); }
-  if (bl) baixar(b64Blob(r.label_228, 'image/png'), `Label_Passaporte_${r.pedido}.png`);
+  if (bl) baixar(b64Blob(r.label_228_pdf, 'application/pdf'), `Label_Passaporte_${r.pedido}.pdf`);
 });
 
 // Reembolso
@@ -556,8 +556,8 @@ $('#b-228').addEventListener('click', async (e) => {
     renderLeituras(r.leituras);
     $('#l228-res').innerHTML = `<div class="g2" style="align-items:start"><img class="l228-img" src="data:image/png;base64,${r.png}" alt="Label 228 gerada">
       <div class="painel-aba" style="gap:12px"><p class="nota">Confira o nome e o endereço na label. Se algo saiu errado, cole o endereço correto acima e gere de novo.</p>
-      <div><button class="btn sec" id="b-228-baixar"><i class="material-icons">download</i>Baixar label (PNG)</button></div></div></div>`;
-    $('#b-228-baixar').onclick = () => baixar(b64Blob(r.png, 'image/png'), r.arquivo);
+      <div><button class="btn sec" id="b-228-baixar"><i class="material-icons">download</i>Baixar label (PDF)</button></div></div></div>`;
+    $('#b-228-baixar').onclick = () => baixar(b64Blob(r.pdf, 'application/pdf'), r.arquivo);
   } catch (err) { if (!silencioso(err)) toast(esc(err.message), 'erro', 7000); }
 });
 

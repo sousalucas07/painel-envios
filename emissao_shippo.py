@@ -322,7 +322,7 @@ def renderizar_aba_emissao():
     import streamlit as st
 
     from label_passaporte import (
-        CAMPOS_CLIENTE, CAMPOS_OBRIGATORIOS, extrair_endereco, gerar_label_passaporte_png,
+        CAMPOS_CLIENTE, CAMPOS_OBRIGATORIOS, extrair_endereco, gerar_label_passaporte_png, label_passaporte_pdf,
     )
     from leitor_foto import TAMANHO_MAX_FOTO
     from sheets import ler_envios_sheets, registrar_envio_sheets
@@ -503,8 +503,8 @@ def renderizar_aba_emissao():
         if res.get("label_228"):
             st.image(res["label_228"], caption="Label 228 (envelope passaporte)", width=420)
             st.download_button(
-                "⬇️ Baixar Label 228", data=res["label_228"],
-                file_name=f"Label_Passaporte_{res['pedido']}.png", mime="image/png",
+                "⬇️ Baixar Label 228 (PDF)", data=label_passaporte_pdf(res["label_228"]),
+                file_name=f"Label_Passaporte_{res['pedido']}.pdf", mime="application/pdf",
                 use_container_width=True, key="emi_dl_228",
             )
 

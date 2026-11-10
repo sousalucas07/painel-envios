@@ -576,7 +576,9 @@ def comprar(dados: Compra, sessao: dict = Depends(exigir_emissao)):
         "teto": _teto(),
     }
     if dados.modo == "Cli - Con (Passaporte)" and etiquetas and cliente_dados:
-        resposta["label_228"] = _b64(l228.gerar_label_passaporte_png(consulado, cliente_dados))
+        png_228 = l228.gerar_label_passaporte_png(consulado, cliente_dados)
+        resposta["label_228"] = _b64(png_228)
+        resposta["label_228_pdf"] = _b64(l228.label_passaporte_pdf(png_228))
     return resposta
 
 
@@ -696,7 +698,8 @@ async def gerar_label_228(consulado: str = Form(...), texto: str = Form(""), arq
     if faltando:
         raise HTTPException(422, f"A IA não encontrou: {', '.join(faltando)}. Cole o nome e o endereço completos no campo de texto.")
     png = await _em_thread(l228.gerar_label_passaporte_png, consulado, cliente)
-    return {"png": _b64(png), "arquivo": "Label_Passaporte_" + "_".join(cliente["nome"].split()) + ".png",
+    return {"png": _b64(png), "pdf": _b64(l228.label_passaporte_pdf(png)),
+            "arquivo": "Label_Passaporte_" + "_".join(cliente["nome"].split()) + ".pdf",
             "cliente": cliente, "leituras": _leituras()}
 
 

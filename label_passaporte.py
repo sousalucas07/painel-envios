@@ -152,6 +152,14 @@ def gerar_label_passaporte_png(consulado_nome, dados_cliente, caminho_template=T
     return saida.getvalue()
 
 
+def label_passaporte_pdf(png_bytes):
+    """PNG da label (o template é uma folha A4 inteira) -> PDF A4 para imprimir em tamanho real."""
+    img = Image.open(io.BytesIO(png_bytes))
+    saida = io.BytesIO()
+    img.save(saida, "PDF", resolution=img.width / 8.27)  # 8.27" = largura do A4
+    return saida.getvalue()
+
+
 # ==============================================================================
 # GEMINI: comprovante de residência (foto/PDF) ou texto colado -> campos
 # ==============================================================================
@@ -230,7 +238,7 @@ def renderizar_label_passaporte():
                     else:
                         st.session_state["label_png"] = gerar_label_passaporte_png(consulado, dados)
                         st.session_state["label_arquivo"] = (
-                            "Label_Passaporte_" + "_".join(dados["nome"].split()) + ".png"
+                            "Label_Passaporte_" + "_".join(dados["nome"].split()) + ".pdf"
                         )
                 except Exception as e:
                     st.error(f"❌ Falha na leitura ({type(e).__name__}: {e})")
@@ -242,10 +250,10 @@ def renderizar_label_passaporte():
             )
             st.image(st.session_state["label_png"], width=420)
             st.download_button(
-                "⬇️ Baixar label (PNG)",
-                data=st.session_state["label_png"],
+                "⬇️ Baixar label (PDF)",
+                data=label_passaporte_pdf(st.session_state["label_png"]),
                 file_name=st.session_state["label_arquivo"],
-                mime="image/png",
+                mime="application/pdf",
                 use_container_width=True,
             )
 
