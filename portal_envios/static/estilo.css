@@ -64,7 +64,8 @@ button { font: inherit; color: inherit; }
 .power:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
 .hero { margin-top: 14px; }
-.h1 { margin: 0; color: var(--text); font: 500 clamp(26px, 2.6vw, 36px)/1.05 var(--display); text-transform: uppercase; }
+.hero .wordmark { height: 27px; }
+.h1 { margin: 0; color: var(--text); font: 500 clamp(26px, 3vw, 42px)/1.05 var(--display); text-transform: uppercase; }
 .sub { margin: 10px 0 0; font-size: 15px; color: var(--muted); }
 
 /* ---------- abas (mesma barra azul do painel de automações) ---------- */
