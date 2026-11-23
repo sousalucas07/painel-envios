@@ -346,13 +346,13 @@ def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criaca
     )
 
 # ==============================================================================
-# VALIDADE DA ETIQUETA (a USPS só aceita até 30 dias após a compra)
+# VALIDADE DA ETIQUETA (USPS: 30 dias após a compra, com tolerância na prática; Shippo: reembolso até 90 dias)
 # ==============================================================================
 DIAS_AVISO_VALIDADE = 25      # tarefa: faltam 5 dias para vencer
 DIAS_VALIDADE_ETIQUETA = 30
-DIAS_REEMBOLSO_AUTO = 35      # 5 dias depois de vencer: o sistema pede o reembolso sozinho
+DIAS_REEMBOLSO_AUTO = 89      # véspera do prazo final da Shippo (90 dias): pede o reembolso sozinho
 LIMITE_REEMBOLSOS_CICLO = 10  # o reembolso é irreversível: trava contra reembolso em massa por engano
-# A regra só age no marco (dia 25 ou dia 35) que cair a partir desta data.
+# A regra só age no marco (dia 25 ou dia 89) que cair a partir desta data.
 # Etiqueta que já tinha passado do marco quando a regra entrou fica para decisão manual.
 INICIO_REGRA_VALIDADE = date(2026, 11, 24)
 MARCA_AVISO_VALIDADE = "ETIQUETA VENCE"
@@ -390,15 +390,16 @@ def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
         f"⏳ {MARCA_AVISO_VALIDADE} EM {(vence - agora_br().date()).days} DIAS: {tipo_envio} - Negócio #{deal_id}",
         f"A etiqueta {tipo_envio} do pedido #{deal_id} ({nome}) foi comprada em {compra:%d/%m/%Y}"
         f" e ainda não foi postada.\nEla vence em {vence:%d/%m/%Y} (30 dias após a compra)."
-        f"\nSe não for postada, o sistema pede o reembolso sozinho em {reembolso:%d/%m/%Y}"
+        " Depois disso a USPS costuma aceitar, mas sem garantia."
+        f"\nSe continuar sem postagem, o sistema pede o reembolso sozinho em {reembolso:%d/%m/%Y}"
         " e a etiqueta deixa de valer."
-        "\nSe o envio ainda vai acontecer, cobre a postagem ou emita uma etiqueta nova."
+        "\nSe o envio ainda vai acontecer, cobre a postagem."
         f"\nRastreio: {LINK_RASTREIO_USPS}{rastreio}",
     )
 
 
 def reembolsar_vencidas(vencidas):
-    """Pede o reembolso das etiquetas vencidas e nunca postadas. `vencidas`: (rastreio, pedido, tipo, nome).
+    """Pede o reembolso das etiquetas nunca postadas, na véspera do prazo da Shippo. `vencidas`: (rastreio, pedido, tipo, nome).
 
     Só as compradas pela Shippo; a consulta barra etiqueta com scan na USPS ou fora do prazo.
     """
@@ -429,13 +430,13 @@ def reembolsar_vencidas(vencidas):
             print(f"   ⏭️ A Shippo recusou o reembolso #{deal_id} {tipo_envio} (…{rastreio[-4:]}).", flush=True)
             continue
         feitos += 1
-        print(f"   ↩️ Etiqueta vencida reembolsada: #{deal_id} {tipo_envio} (…{rastreio[-4:]}), US$ {c['valor']:.2f} ({status})", flush=True)
+        print(f"   ↩️ Etiqueta não usada reembolsada: #{deal_id} {tipo_envio} (…{rastreio[-4:]}), US$ {c['valor']:.2f} ({status})", flush=True)
         criar_tarefa_bitrix(
             deal_id,
-            f"↩️ ETIQUETA EXPIRADA E REEMBOLSADA: {tipo_envio} - Negócio #{deal_id}",
+            f"↩️ ETIQUETA NÃO USADA E REEMBOLSADA: {tipo_envio} - Negócio #{deal_id}",
             f"A etiqueta {tipo_envio} do pedido #{deal_id} ({nome}), comprada em {c['criada']},"
-            f" venceu sem ser postada (validade de {DIAS_VALIDADE_ETIQUETA} dias)."
-            f"\nO sistema pediu o reembolso de US$ {c['valor']:.2f} à Shippo. O crédito entra na próxima fatura."
+            f" não foi postada em {DIAS_REEMBOLSO_AUTO} dias."
+            f"\nPara não perder o valor (a Shippo só reembolsa até 90 dias), o sistema pediu o reembolso de US$ {c['valor']:.2f} à Shippo. O crédito entra na próxima fatura."
             "\nNÃO use mais essa etiqueta: a USPS pode confiscar o envelope."
             "\nSe o envio ainda for necessário, emita uma etiqueta nova."
             f"\nRastreio cancelado: {LINK_RASTREIO_USPS}{rastreio}",
@@ -565,7 +566,7 @@ def rodar_monitoramento():
         ):
             entregues_antigos.append((tracking_code, deal_id, tipo_envio))
 
-        # 5. Validade: avisa perto de vencer; vencida há 5 dias entra na fila do reembolso
+        # 5. Validade: avisa perto de vencer; sem postagem até a véspera do prazo da Shippo, entra na fila do reembolso
         fase = fase_validade(novo_status, data_criacao) if novo_status else None
         if fase == "aviso":
             avisar_validade(deal_id, tracking_code, tipo_envio, nome, data_criacao)
