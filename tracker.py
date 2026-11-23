@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import requests
 from sheets import FUSO_BR, agora_br, conectar_planilha_ativa as conectar_planilha
 
@@ -291,8 +291,8 @@ PRAZOS_SLA = {
 
 LINK_RASTREIO_USPS = "https://tools.usps.com/go/TrackConfirmAction?tLabels="
 
-def tarefa_sla_existe(deal_id, rastreio):
-    """Já existe tarefa de SLA deste rastreio no negócio? Na dúvida responde True (não duplica).
+def tarefa_sla_existe(deal_id, rastreio, marca="ALERTA (+"):
+    """Já existe tarefa de alerta (título com `marca`) deste rastreio no negócio? Na dúvida responde True (não duplica).
 
     Procura nas tarefas de alerta do negócio: o rastreio aparece no título (tarefas antigas)
     ou no link da descrição (tarefas novas).
@@ -300,7 +300,7 @@ def tarefa_sla_existe(deal_id, rastreio):
     try:
         res = requests.post(
             f"{WEBHOOK_URL.rstrip('/')}/tasks.task.list.json",
-            json={"filter": {"UF_CRM_TASK": f"D_{deal_id}", "%TITLE": "ALERTA (+"},
+            json={"filter": {"UF_CRM_TASK": f"D_{deal_id}", "%TITLE": marca},
                   "select": ["ID", "TITLE", "DESCRIPTION"]},
             timeout=10,
         )
@@ -344,6 +344,103 @@ def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criaca
         f"Envio {tipo_envio} sem entrega há {dias} dias (prazo: {prazo}).\nStatus atual: {status}"
         f"\nRastreio: {LINK_RASTREIO_USPS}{rastreio}",
     )
+
+# ==============================================================================
+# VALIDADE DA ETIQUETA (a USPS só aceita até 30 dias após a compra)
+# ==============================================================================
+DIAS_AVISO_VALIDADE = 25      # tarefa: faltam 5 dias para vencer
+DIAS_VALIDADE_ETIQUETA = 30
+DIAS_REEMBOLSO_AUTO = 35      # 5 dias depois de vencer: o sistema pede o reembolso sozinho
+LIMITE_REEMBOLSOS_CICLO = 10  # o reembolso é irreversível: trava contra reembolso em massa por engano
+# A regra só age no marco (dia 25 ou dia 35) que cair a partir desta data.
+# Etiqueta que já tinha passado do marco quando a regra entrou fica para decisão manual.
+INICIO_REGRA_VALIDADE = date(2026, 11, 24)
+MARCA_AVISO_VALIDADE = "ETIQUETA VENCE"
+
+
+def fase_validade(status, data_criacao_str, hoje=None):
+    """"aviso", "reembolso" ou None para uma etiqueta ainda não postada. Função pura (testável)."""
+    if not str(status).upper().startswith("PRE TRANSIT"):
+        return None  # postada, entregue ou sem resposta da USPS
+    try:
+        compra = datetime.fromisoformat(str(data_criacao_str).strip()).date()
+    except ValueError:
+        return None
+    idade = ((hoje or agora_br().date()) - compra).days
+
+    def na_regra(marco):
+        return compra + timedelta(days=marco) >= INICIO_REGRA_VALIDADE
+
+    if idade >= DIAS_REEMBOLSO_AUTO:
+        return "reembolso" if na_regra(DIAS_REEMBOLSO_AUTO) else None
+    if DIAS_AVISO_VALIDADE <= idade < DIAS_VALIDADE_ETIQUETA:
+        return "aviso" if na_regra(DIAS_AVISO_VALIDADE) else None
+    return None
+
+
+def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
+    """Tarefa única por etiqueta: está perto de vencer e ninguém postou."""
+    if not deal_id or tarefa_sla_existe(deal_id, rastreio, MARCA_AVISO_VALIDADE):
+        return
+    compra = datetime.fromisoformat(str(data_criacao_str).strip()).date()
+    vence = compra + timedelta(days=DIAS_VALIDADE_ETIQUETA)
+    reembolso = compra + timedelta(days=DIAS_REEMBOLSO_AUTO)
+    criar_tarefa_bitrix(
+        deal_id,
+        f"⏳ {MARCA_AVISO_VALIDADE} EM {(vence - agora_br().date()).days} DIAS: {tipo_envio} - Negócio #{deal_id}",
+        f"A etiqueta {tipo_envio} do pedido #{deal_id} ({nome}) foi comprada em {compra:%d/%m/%Y}"
+        f" e ainda não foi postada.\nEla vence em {vence:%d/%m/%Y} (30 dias após a compra)."
+        f"\nSe não for postada, o sistema pede o reembolso sozinho em {reembolso:%d/%m/%Y}"
+        " e a etiqueta deixa de valer."
+        "\nSe o envio ainda vai acontecer, cobre a postagem ou emita uma etiqueta nova."
+        f"\nRastreio: {LINK_RASTREIO_USPS}{rastreio}",
+    )
+
+
+def reembolsar_vencidas(vencidas):
+    """Pede o reembolso das etiquetas vencidas e nunca postadas. `vencidas`: (rastreio, pedido, tipo, nome).
+
+    Só as compradas pela Shippo; a consulta barra etiqueta com scan na USPS ou fora do prazo.
+    """
+    import emissao_shippo as emi
+
+    try:
+        compras = emi.buscar_compras([r for r, _, _, _ in vencidas])
+    except Exception as e:
+        print(f"   ⚠️ Não consegui buscar as compras na Shippo ({type(e).__name__}); reembolso adiado.", flush=True)
+        return
+    feitos = 0
+    for rastreio, deal_id, tipo_envio, nome in vencidas:
+        if feitos >= LIMITE_REEMBOLSOS_CICLO:
+            print("   ⏸️ Limite de reembolsos do ciclo atingido; o restante fica para o próximo.", flush=True)
+            break
+        if rastreio not in compras:
+            continue  # não foi comprada pela Shippo (ou tem mais de 90 dias)
+        try:
+            c = emi.consultar_reembolso(rastreio, compras[rastreio])
+            if c["bloqueio"]:
+                print(f"   ⏭️ Sem reembolso #{deal_id} {tipo_envio} (…{rastreio[-4:]}): {c['bloqueio']}", flush=True)
+                continue
+            status = emi.reembolsar_e_registrar(c, deal_id, nome, tipo_envio)
+        except Exception as e:
+            print(f"   ⚠️ Falha no reembolso #{deal_id} {tipo_envio} (…{rastreio[-4:]}): {type(e).__name__}", flush=True)
+            continue
+        if status == "ERROR":
+            print(f"   ⏭️ A Shippo recusou o reembolso #{deal_id} {tipo_envio} (…{rastreio[-4:]}).", flush=True)
+            continue
+        feitos += 1
+        print(f"   ↩️ Etiqueta vencida reembolsada: #{deal_id} {tipo_envio} (…{rastreio[-4:]}), US$ {c['valor']:.2f} ({status})", flush=True)
+        criar_tarefa_bitrix(
+            deal_id,
+            f"↩️ ETIQUETA EXPIRADA E REEMBOLSADA: {tipo_envio} - Negócio #{deal_id}",
+            f"A etiqueta {tipo_envio} do pedido #{deal_id} ({nome}), comprada em {c['criada']},"
+            f" venceu sem ser postada (validade de {DIAS_VALIDADE_ETIQUETA} dias)."
+            f"\nO sistema pediu o reembolso de US$ {c['valor']:.2f} à Shippo. O crédito entra na próxima fatura."
+            "\nNÃO use mais essa etiqueta: a USPS pode confiscar o envelope."
+            "\nSe o envio ainda for necessário, emita uma etiqueta nova."
+            f"\nRastreio cancelado: {LINK_RASTREIO_USPS}{rastreio}",
+        )
+
 
 # ==============================================================================
 # CONSULTAS SHIPPO E PLANILHA
@@ -428,6 +525,7 @@ def rodar_monitoramento():
     linhas = valores[1:]
     mudancas = 0
     entregues_antigos = []  # (rastreio, pedido, tipo)
+    vencidas = []  # (rastreio, pedido, tipo, nome)
     for index, row in enumerate(linhas, start=2):
         if len(row) < idx_rastreio: continue
         
@@ -467,7 +565,17 @@ def rodar_monitoramento():
         ):
             entregues_antigos.append((tracking_code, deal_id, tipo_envio))
 
+        # 5. Validade: avisa perto de vencer; vencida há 5 dias entra na fila do reembolso
+        fase = fase_validade(novo_status, data_criacao) if novo_status else None
+        if fase == "aviso":
+            avisar_validade(deal_id, tracking_code, tipo_envio, nome, data_criacao)
+        elif fase == "reembolso":
+            vencidas.append((tracking_code, deal_id, tipo_envio, nome))
+
         time.sleep(0.2)
+
+    if vencidas:
+        reembolsar_vencidas(vencidas)
 
     if entregues_antigos:
         from sheets import deletar_envios_sheets

@@ -271,11 +271,14 @@ def etiquetas_para_reimprimir(rastreios):
     return (etiquetas_pdf(pngs) if pngs else None), nao_achados
 
 
-def consultar_reembolso(rastreio):
-    """Junta o que a tela mostra antes de confirmar. 'bloqueio' preenchido = não reembolsar."""
+def consultar_reembolso(rastreio, tx=None):
+    """Junta o que a tela mostra antes de confirmar. 'bloqueio' preenchido = não reembolsar.
+
+    `tx`: compra já achada por buscar_compras (o tracker consulta várias de uma vez).
+    """
     from datetime import datetime, timedelta, timezone
 
-    tx = buscar_compra(rastreio)
+    tx = tx or buscar_compra(rastreio)
     if not tx:
         return {"bloqueio": (
             "Compra não encontrada na Shippo (só etiquetas emitidas por este sistema,"
@@ -303,6 +306,29 @@ def consultar_reembolso(rastreio):
 def pedir_reembolso(transacao):
     """Pede o reembolso (irreversível). Devolve o status: QUEUED, PENDING, SUCCESS ou ERROR."""
     return _shippo("/refunds/", {"transaction": transacao, "async": False}).get("status", "ERROR")
+
+
+def reembolsar_e_registrar(c, pedido="", nome="", tipo=""):
+    """Pede o reembolso de uma consulta sem bloqueio (irreversível) e devolve o status da Shippo.
+
+    Aceito: tira a linha do painel e lança o negativo na auditoria. "ERROR" = recusado, nada muda.
+    """
+    from sheets import deletar_envios_sheets, registrar_reembolso_sheets
+
+    status = pedir_reembolso(c["transacao"])
+    if status == "ERROR":
+        return status
+    ref_pedido, _, ref_tipo = c["referencia"].partition(" ")  # referência = "<pedido> <tipo>"
+    deletar_envios_sheets([c["rastreio"]])
+    if not registrar_reembolso_sheets({
+        "num_pedido": pedido or ref_pedido,
+        "nome": nome,
+        "tracking_code": LINK_USPS + c["rastreio"],
+        "tipo_envio": f"REEMBOLSO {tipo or ref_tipo} ({status})",
+        "custo": -c["valor"],
+    }):
+        print(f"⚠️ Reembolso fora da auditoria. Lance à mão: -US$ {c['valor']:.2f}, rastreio {c['rastreio']}.", flush=True)
+    return status
 
 
 # ==============================================================================
