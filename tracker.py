@@ -346,19 +346,18 @@ def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criaca
     )
 
 # ==============================================================================
-# VALIDADE DA ETIQUETA (USPS: 30 dias após a compra, com tolerância na prática; Shippo: reembolso até 90 dias)
+# ETIQUETA PARADA (USPS: vale 30 dias após a compra, com tolerância na prática; Shippo: reembolso até 90 dias)
 # ==============================================================================
-DIAS_AVISO_VALIDADE = 25      # tarefa: faltam 5 dias para vencer
-DIAS_VALIDADE_ETIQUETA = 30
+DIAS_AVISO_PARADA = 30        # tarefa: 30 dias em pré-envio, sem nenhuma movimentação
 DIAS_REEMBOLSO_AUTO = 89      # véspera do prazo final da Shippo (90 dias): pede o reembolso sozinho
 LIMITE_REEMBOLSOS_CICLO = 10  # o reembolso é irreversível: trava contra reembolso em massa por engano
-# A regra só age no marco (dia 25 ou dia 89) que cair a partir desta data.
-# Etiqueta que já tinha passado do marco quando a regra entrou fica para decisão manual.
-INICIO_REGRA_VALIDADE = date(2026, 11, 24)
-MARCA_AVISO_VALIDADE = "ETIQUETA VENCE"
+# O aviso só vale para etiqueta que completa os 30 dias a partir desta data
+# (as que já estavam paradas quando a regra entrou não geram tarefa).
+INICIO_AVISO_PARADA = date(2026, 11, 24)
+MARCA_AVISO_PARADA = "SEM POSTAGEM"
 
 
-def fase_validade(status, data_criacao_str, hoje=None):
+def fase_validade(status, data_criacao_str, tipo_envio="", hoje=None):
     """"aviso", "reembolso" ou None para uma etiqueta ainda não postada. Função pura (testável)."""
     if not str(status).upper().startswith("PRE TRANSIT"):
         return None  # postada, entregue ou sem resposta da USPS
@@ -367,33 +366,33 @@ def fase_validade(status, data_criacao_str, hoje=None):
     except ValueError:
         return None
     idade = ((hoje or agora_br().date()) - compra).days
-
-    def na_regra(marco):
-        return compra + timedelta(days=marco) >= INICIO_REGRA_VALIDADE
-
     if idade >= DIAS_REEMBOLSO_AUTO:
-        return "reembolso" if na_regra(DIAS_REEMBOLSO_AUTO) else None
-    if DIAS_AVISO_VALIDADE <= idade < DIAS_VALIDADE_ETIQUETA:
-        return "aviso" if na_regra(DIAS_AVISO_VALIDADE) else None
+        return "reembolso"
+    if (
+        idade >= DIAS_AVISO_PARADA
+        and compra + timedelta(days=DIAS_AVISO_PARADA) >= INICIO_AVISO_PARADA
+        # Consulado -> Cliente fica em pré-envio até o consulado postar: já tem o alerta de 70 dias
+        and classificar_envio(tipo_envio) != "CONSULADO_CLIENTE"
+    ):
+        return "aviso"
     return None
 
 
 def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
-    """Tarefa única por etiqueta: está perto de vencer e ninguém postou."""
-    if not deal_id or tarefa_sla_existe(deal_id, rastreio, MARCA_AVISO_VALIDADE):
+    """Tarefa única por etiqueta: 30 dias comprada e ninguém postou."""
+    if not deal_id or tarefa_sla_existe(deal_id, rastreio, MARCA_AVISO_PARADA):
         return
     compra = datetime.fromisoformat(str(data_criacao_str).strip()).date()
-    vence = compra + timedelta(days=DIAS_VALIDADE_ETIQUETA)
     reembolso = compra + timedelta(days=DIAS_REEMBOLSO_AUTO)
     criar_tarefa_bitrix(
         deal_id,
-        f"⏳ {MARCA_AVISO_VALIDADE} EM {(vence - agora_br().date()).days} DIAS: {tipo_envio} - Negócio #{deal_id}",
+        f"⏳ ETIQUETA {DIAS_AVISO_PARADA} DIAS {MARCA_AVISO_PARADA}: {tipo_envio} - Negócio #{deal_id}",
         f"A etiqueta {tipo_envio} do pedido #{deal_id} ({nome}) foi comprada em {compra:%d/%m/%Y}"
-        f" e ainda não foi postada.\nEla vence em {vence:%d/%m/%Y} (30 dias após a compra)."
-        " Depois disso a USPS costuma aceitar, mas sem garantia."
-        f"\nSe continuar sem postagem, o sistema pede o reembolso sozinho em {reembolso:%d/%m/%Y}"
-        " e a etiqueta deixa de valer."
+        f" e está há {(agora_br().date() - compra).days} dias sem nenhuma movimentação na USPS."
+        "\nA validade oficial é de 30 dias. Depois disso a USPS costuma aceitar, mas sem garantia."
         "\nSe o envio ainda vai acontecer, cobre a postagem."
+        f"\nSe continuar parada, o sistema pede o reembolso sozinho em {reembolso:%d/%m/%Y}"
+        " e a etiqueta deixa de valer."
         f"\nRastreio: {LINK_RASTREIO_USPS}{rastreio}",
     )
 
@@ -566,8 +565,8 @@ def rodar_monitoramento():
         ):
             entregues_antigos.append((tracking_code, deal_id, tipo_envio))
 
-        # 5. Validade: avisa perto de vencer; sem postagem até a véspera do prazo da Shippo, entra na fila do reembolso
-        fase = fase_validade(novo_status, data_criacao) if novo_status else None
+        # 5. Etiqueta parada: avisa aos 30 dias; sem postagem até a véspera do prazo da Shippo, entra na fila do reembolso
+        fase = fase_validade(novo_status, data_criacao, tipo_envio) if novo_status else None
         if fase == "aviso":
             avisar_validade(deal_id, tracking_code, tipo_envio, nome, data_criacao)
         elif fase == "reembolso":
