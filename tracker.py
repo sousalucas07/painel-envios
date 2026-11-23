@@ -349,7 +349,7 @@ def verificar_sla(deal_id, rastreio, tipo_envio, status, data_saida, data_criaca
 # ETIQUETA PARADA (USPS: vale 30 dias após a compra, com tolerância na prática; Shippo: reembolso até 90 dias)
 # ==============================================================================
 DIAS_AVISO_PARADA = 30        # tarefa: 30 dias em pré-envio, sem nenhuma movimentação
-DIAS_REEMBOLSO_AUTO = 89      # véspera do prazo final da Shippo (90 dias): pede o reembolso sozinho
+DIAS_REEMBOLSO_AUTO = 87      # 3 dias antes do prazo final da Shippo (90 dias): pede o reembolso sozinho
 LIMITE_REEMBOLSOS_CICLO = 10  # o reembolso é irreversível: trava contra reembolso em massa por engano
 # O aviso só vale para etiqueta que completa os 30 dias a partir desta data
 # (as que já estavam paradas quando a regra entrou não geram tarefa).
@@ -398,7 +398,7 @@ def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
 
 
 def reembolsar_vencidas(vencidas):
-    """Pede o reembolso das etiquetas nunca postadas, na véspera do prazo da Shippo. `vencidas`: (rastreio, pedido, tipo, nome).
+    """Pede o reembolso das etiquetas nunca postadas, 3 dias antes do prazo da Shippo. `vencidas`: (rastreio, pedido, tipo, nome).
 
     Só as compradas pela Shippo; a consulta barra etiqueta com scan na USPS ou fora do prazo.
     """
@@ -565,7 +565,7 @@ def rodar_monitoramento():
         ):
             entregues_antigos.append((tracking_code, deal_id, tipo_envio))
 
-        # 5. Etiqueta parada: avisa aos 30 dias; sem postagem até a véspera do prazo da Shippo, entra na fila do reembolso
+        # 5. Etiqueta parada: avisa aos 30 dias; sem postagem até 3 dias antes do prazo da Shippo, entra na fila do reembolso
         fase = fase_validade(novo_status, data_criacao, tipo_envio) if novo_status else None
         if fase == "aviso":
             avisar_validade(deal_id, tracking_code, tipo_envio, nome, data_criacao)
