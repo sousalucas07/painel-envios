@@ -23,4 +23,11 @@ assert f("", "2027-01-29") is None
 assert f("2026-10-24 10:00", "2026-11-24") is None          # dia 30 caiu em 23/11
 assert f("2026-10-25 10:00", "2026-11-24") == "aviso"
 assert f("2026-10-19 10:00", "2027-01-16") == "reembolso"
+# Aviso de cancelamento ao cliente: só RETORNO e Cli - Con (é o cliente quem posta)
+m = tracker.mensagem_cancelamento
+assert "Olá, Maria!" in m("RETORNO", "MARIA SILVA", "123", "9400111122223333") and "final 3333" in m("RETORNO", "MARIA SILVA", "123", "9400111122223333")
+assert "consulado" in m("Cli - Con", "", "123", "9400111122223333")
+assert "consulado" in m("Cli - Con / Con - Cli", "Ana", "123", "9400111122223333")
+for tipo in ("IDA", "IDA + RETORNO", "Con - Cli", "D55 - DPT"):
+    assert m(tipo, "Ana", "123", "9400111122223333") is None, tipo
 print("ok")

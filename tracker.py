@@ -378,6 +378,32 @@ def fase_validade(status, data_criacao_str, tipo_envio="", hoje=None):
     return None
 
 
+# Etiqueta cancelada: só avisa o cliente nos trechos em que é ele quem posta.
+MSG_CANCELADA = {
+    "RETORNO": (
+        "A etiqueta de retorno do seu pedido {pedido} (rastreio final {final}) não foi postada dentro do prazo e foi cancelada."
+        "\n\nPor favor, não utilize mais essa etiqueta: os Correios podem recusar ou devolver o envelope."
+        "\n\nSe você ainda precisa enviar os documentos para o nosso escritório, responda esta mensagem e emitimos uma nova etiqueta."
+    ),
+    "CLIENTE_CONSULADO": (
+        "A etiqueta para envio dos seus documentos ao consulado, do pedido {pedido} (rastreio final {final}),"
+        " não foi postada dentro do prazo e foi cancelada."
+        "\n\nPor favor, não utilize mais essa etiqueta: o envelope pode ser recusado ou devolvido pelos Correios."
+        "\n\nSe você ainda vai enviar os documentos ao consulado, responda esta mensagem e emitimos uma nova etiqueta."
+    ),
+}
+
+
+def mensagem_cancelamento(tipo_envio, nome, pedido, rastreio):
+    """Texto do WhatsApp da etiqueta cancelada, ou None se o trecho não avisa o cliente. Função pura (testável)."""
+    corpo = MSG_CANCELADA.get(classificar_envio(tipo_envio))
+    if not corpo:
+        return None
+    primeiro = str(nome).split()[0].title() if str(nome).strip() else ""
+    saudacao = f"Olá, {primeiro}! Tudo bem?" if primeiro else "Olá! Tudo bem?"
+    return f"{saudacao}\n\n{corpo.format(pedido=pedido, final=rastreio[-4:])}"
+
+
 def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
     """Tarefa única por etiqueta: 30 dias comprada e ninguém postou."""
     if not deal_id or tarefa_sla_existe(deal_id, rastreio, MARCA_AVISO_PARADA):
@@ -397,10 +423,11 @@ def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
     )
 
 
-def reembolsar_vencidas(vencidas):
+def reembolsar_vencidas(vencidas, em_movimento=()):
     """Pede o reembolso das etiquetas nunca postadas, 3 dias antes do prazo da Shippo. `vencidas`: (rastreio, pedido, tipo, nome).
 
     Só as compradas pela Shippo; a consulta barra etiqueta com scan na USPS ou fora do prazo.
+    `em_movimento`: (pedido, trecho) que já seguiu com outra etiqueta; nesses o cliente não recebe o aviso.
     """
     import emissao_shippo as emi
 
@@ -430,6 +457,16 @@ def reembolsar_vencidas(vencidas):
             continue
         feitos += 1
         print(f"   ↩️ Etiqueta não usada reembolsada: #{deal_id} {tipo_envio} (…{rastreio[-4:]}), US$ {c['valor']:.2f} ({status})", flush=True)
+        mensagem = mensagem_cancelamento(tipo_envio, nome, deal_id, rastreio)
+        if not mensagem:
+            aviso_cliente = "O cliente não foi avisado (esse tipo de envio não tem aviso)."
+        elif (deal_id, classificar_envio(tipo_envio)) in em_movimento:
+            aviso_cliente = "O cliente não foi avisado: o pedido já seguiu com outra etiqueta do mesmo tipo."
+        elif telefone := obter_telefone_bitrix(deal_id):
+            enviar_whatsapp_direto(telefone, mensagem)
+            aviso_cliente = "O cliente foi avisado por WhatsApp que a etiqueta foi cancelada."
+        else:
+            aviso_cliente = "O cliente NÃO foi avisado (sem telefone no Bitrix). Avise manualmente."
         criar_tarefa_bitrix(
             deal_id,
             f"↩️ ETIQUETA NÃO USADA E REEMBOLSADA: {tipo_envio} - Negócio #{deal_id}",
@@ -438,6 +475,7 @@ def reembolsar_vencidas(vencidas):
             f"\nPara não perder o valor (a Shippo só reembolsa até 90 dias), o sistema pediu o reembolso de US$ {c['valor']:.2f} à Shippo. O crédito entra na próxima fatura."
             "\nNÃO use mais essa etiqueta: a USPS pode confiscar o envelope."
             "\nSe o envio ainda for necessário, emita uma etiqueta nova."
+            f"\n{aviso_cliente}"
             f"\nRastreio cancelado: {LINK_RASTREIO_USPS}{rastreio}",
         )
 
@@ -526,6 +564,8 @@ def rodar_monitoramento():
     mudancas = 0
     entregues_antigos = []  # (rastreio, pedido, tipo)
     vencidas = []  # (rastreio, pedido, tipo, nome)
+    # ponytail: só enxerga o painel (entregue sai após 15 dias); cruzar com a auditoria se aparecer aviso indevido
+    em_movimento = set()  # (pedido, trecho) com etiqueta já postada
     for index, row in enumerate(linhas, start=2):
         if len(row) < idx_rastreio: continue
         
@@ -567,6 +607,8 @@ def rodar_monitoramento():
 
         # 5. Etiqueta parada: avisa aos 30 dias; sem postagem até 3 dias antes do prazo da Shippo, entra na fila do reembolso
         fase = fase_validade(novo_status, data_criacao, tipo_envio) if novo_status else None
+        if novo_status and novo_status.upper().startswith(PREFIXOS_JA_EM_MOVIMENTO):
+            em_movimento.add((deal_id, classificar_envio(tipo_envio)))
         if fase == "aviso":
             avisar_validade(deal_id, tracking_code, tipo_envio, nome, data_criacao)
         elif fase == "reembolso":
@@ -575,7 +617,7 @@ def rodar_monitoramento():
         time.sleep(0.2)
 
     if vencidas:
-        reembolsar_vencidas(vencidas)
+        reembolsar_vencidas(vencidas, em_movimento)
 
     if entregues_antigos:
         from sheets import deletar_envios_sheets
