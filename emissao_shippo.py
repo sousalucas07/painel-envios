@@ -227,34 +227,48 @@ def buscar_compra(rastreio):
     return buscar_compras([rastreio]).get(rastreio)
 
 
-def buscar_compras(rastreios):
-    """{rastreio: transação} das compras encontradas, da mais nova para a mais antiga.
-
-    A Shippo não filtra transação por rastreio: percorre as páginas até achar todos
-    ou até passar de PRAZO_REEMBOLSO_DIAS (90 dias).
-    """
+def _paginas_compras(params):
+    """Transações da Shippo página a página, da mais nova até passar de PRAZO_REEMBOLSO_DIAS (90 dias)."""
     from datetime import datetime, timedelta, timezone
 
-    faltam = set(rastreios)
-    achadas = {}
     limite = datetime.now(timezone.utc) - timedelta(days=PRAZO_REEMBOLSO_DIAS)
-    params = {"results": 100, "object_status": "SUCCESS", "page": 1}
-    while faltam:
+    while True:
         pagina = _shippo_get("/transactions/", params)
         resultados = pagina.get("results") or []
-        for tx in resultados:
-            if tx.get("tracking_number") in faltam:
-                achadas[tx["tracking_number"]] = tx
-                faltam.discard(tx["tracking_number"])
+        yield resultados
         mais_antiga = min((tx.get("object_created", "") for tx in resultados), default="")
         if (
             not pagina.get("next")
             or not mais_antiga
             or datetime.fromisoformat(mais_antiga.replace("Z", "+00:00")) < limite
         ):
-            break
+            return
         params["page"] += 1
+
+
+def buscar_compras(rastreios):
+    """{rastreio: transação} das compras encontradas, da mais nova para a mais antiga.
+
+    A Shippo não filtra transação por rastreio: percorre as páginas até achar todos
+    ou até passar de PRAZO_REEMBOLSO_DIAS (90 dias).
+    """
+    faltam = set(rastreios)
+    achadas = {}
+    if not faltam:
+        return achadas
+    for resultados in _paginas_compras({"results": 100, "object_status": "SUCCESS", "page": 1}):
+        for tx in resultados:
+            if tx.get("tracking_number") in faltam:
+                achadas[tx["tracking_number"]] = tx
+                faltam.discard(tx["tracking_number"])
+        if not faltam:
+            break
     return achadas
+
+
+def compras_recentes():
+    """Todas as transações dos últimos 90 dias, em qualquer status (inclui as reembolsadas)."""
+    return [tx for resultados in _paginas_compras({"results": 100, "page": 1}) for tx in resultados]
 
 
 def etiquetas_para_reimprimir(rastreios):

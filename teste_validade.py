@@ -30,4 +30,9 @@ assert "consulado" in m("Cli - Con", "", "123", "9400111122223333")
 assert "consulado" in m("Cli - Con / Con - Cli", "Ana", "123", "9400111122223333")
 for tipo in ("IDA", "IDA + RETORNO", "Con - Cli", "D55 - DPT"):
     assert m(tipo, "Ana", "123", "9400111122223333") is None, tipo
+# Ida do pedido: só avisa o cliente se a ida saiu (ou se o pedido não tem ida na Shippo)
+tx = lambda ref, rastreio, status="SUCCESS": {"metadata": ref, "tracking_status": rastreio, "status": status}
+assert tracker.ida_postada("100", [tx("100 IDA", "PRE_TRANSIT"), tx("100 IDA", "DELIVERED"), tx("100 RETORNO", "PRE_TRANSIT")]) is True
+assert tracker.ida_postada("100", [tx("100 IDA", "PRE_TRANSIT"), tx("100 IDA", "PRE_TRANSIT", "REFUNDED")]) is False
+assert tracker.ida_postada("100", [tx("100 Cli - Con", "TRANSIT"), tx("1000 IDA", "TRANSIT"), tx("100 IDA", "UNKNOWN", "ERROR")]) is None
 print("ok")

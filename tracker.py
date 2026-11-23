@@ -404,6 +404,23 @@ def mensagem_cancelamento(tipo_envio, nome, pedido, rastreio):
     return f"{saudacao}\n\n{corpo.format(pedido=pedido, final=rastreio[-4:])}"
 
 
+def ida_postada(pedido, compras):
+    """A ida do pedido chegou a sair? True = sim; False = tem ida, nenhuma postada; None = pedido sem ida na Shippo.
+
+    `compras`: transações da Shippo (referência = "<pedido> <tipo>"). Função pura (testável).
+    """
+    status = [
+        tx.get("tracking_status")
+        for tx in compras
+        if tx.get("status") != "ERROR"
+        and (tx.get("metadata") or "").partition(" ")[0] == str(pedido)
+        and classificar_envio((tx.get("metadata") or "").partition(" ")[2]) == "ESCRITORIO_CLIENTE"
+    ]
+    if not status:
+        return None
+    return any(s in ("TRANSIT", "DELIVERED") for s in status)
+
+
 def avisar_validade(deal_id, rastreio, tipo_envio, nome, data_criacao_str):
     """Tarefa única por etiqueta: 30 dias comprada e ninguém postou."""
     if not deal_id or tarefa_sla_existe(deal_id, rastreio, MARCA_AVISO_PARADA):
@@ -428,14 +445,16 @@ def reembolsar_vencidas(vencidas, em_movimento=()):
 
     Só as compradas pela Shippo; a consulta barra etiqueta com scan na USPS ou fora do prazo.
     `em_movimento`: (pedido, trecho) que já seguiu com outra etiqueta; nesses o cliente não recebe o aviso.
+    Também não recebe se a ida do pedido nunca foi postada (a etiqueta nem chegou até ele).
     """
     import emissao_shippo as emi
 
     try:
-        compras = emi.buscar_compras([r for r, _, _, _ in vencidas])
+        recentes = emi.compras_recentes()
     except Exception as e:
         print(f"   ⚠️ Não consegui buscar as compras na Shippo ({type(e).__name__}); reembolso adiado.", flush=True)
         return
+    compras = {tx.get("tracking_number"): tx for tx in recentes if tx.get("status") == "SUCCESS"}
     feitos = 0
     for rastreio, deal_id, tipo_envio, nome in vencidas:
         if feitos >= LIMITE_REEMBOLSOS_CICLO:
@@ -462,6 +481,8 @@ def reembolsar_vencidas(vencidas, em_movimento=()):
             aviso_cliente = "O cliente não foi avisado (esse tipo de envio não tem aviso)."
         elif (deal_id, classificar_envio(tipo_envio)) in em_movimento:
             aviso_cliente = "O cliente não foi avisado: o pedido já seguiu com outra etiqueta do mesmo tipo."
+        elif ida_postada(deal_id, recentes) is False:
+            aviso_cliente = "O cliente não foi avisado: a ida deste pedido nunca foi postada."
         elif telefone := obter_telefone_bitrix(deal_id):
             enviar_whatsapp_direto(telefone, mensagem)
             aviso_cliente = "O cliente foi avisado por WhatsApp que a etiqueta foi cancelada."
