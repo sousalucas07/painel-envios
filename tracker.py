@@ -19,7 +19,11 @@ def obter_secret(chave):
 
 WEBHOOK_URL = obter_secret("BITRIX_WEBHOOK_URL")
 
-WHATCRM_URL = "https://api.whatcrm.online/v3/instance5e4033fa60963d7ce8e7e7fa4fd4adea/sendMessage"
+# Trocar de número = trocar a instância: defina WHATCRM_INSTANCE (e WHATCRM_TOKEN, se a conta for outra).
+WHATCRM_BASE = "https://api.whatcrm.online/v3/instance" + (
+    obter_secret("WHATCRM_INSTANCE") or "5e4033fa60963d7ce8e7e7fa4fd4adea"
+)
+WHATCRM_URL = f"{WHATCRM_BASE}/sendMessage"
 WHATCRM_HEADERS = {
     "Content-Type": "application/json",
     "X-Whappim-Token": obter_secret("WHATCRM_TOKEN"),
@@ -218,9 +222,23 @@ def criar_tarefa_bitrix(deal_id, titulo, descricao, responsavel_id=71104):
 # ==============================================================================
 # DISPARO DIRETO DO WHATSAPP (WHATCRM)
 # ==============================================================================
+def whatsapp_conectado():
+    """A instância tem sessão de WhatsApp? Se a consulta falhar, responde True (o envio decide)."""
+    try:
+        status = requests.get(f"{WHATCRM_BASE}/status", headers=WHATCRM_HEADERS, timeout=10).json()
+    except Exception:
+        return True
+    # Sem sessão o WhatCRM responde "init"; com sessão, "authenticated".
+    return status.get("accountStatus") == "authenticated"
+
+
 def enviar_whatsapp_direto(telefone, mensagem):
-    """Dispara a mensagem diretamente via WhatCRM."""
-    if not telefone: return
+    """Dispara a mensagem diretamente via WhatCRM. Devolve True se o WhatCRM aceitou o envio."""
+    if not telefone: return False
+
+    if not whatsapp_conectado():
+        print("   ⚠️ WhatCRM sem sessão de WhatsApp (número desconectado): mensagem não enviada.", flush=True)
+        return False
 
     payload = {
         "chatId": f"{telefone}@c.us",
@@ -231,10 +249,11 @@ def enviar_whatsapp_direto(telefone, mensagem):
         res = requests.post(WHATCRM_URL, json=payload, headers=WHATCRM_HEADERS, timeout=10)
         if res.status_code in [200, 201]:
             print(f"   💬 WhatsApp enviado via WhatCRM para ...{str(telefone)[-4:]}!", flush=True)
-        else:
-            print(f"   ⚠️ Falha WhatCRM ({res.status_code}): {res.text}", flush=True)
+            return True
+        print(f"   ⚠️ Falha WhatCRM ({res.status_code}): {res.text}", flush=True)
     except Exception as e:
         print(f"   ⚠️ Erro de conexão com WhatCRM: {e}", flush=True)
+    return False
 
 # ==============================================================================
 # ENGINE DE REGRAS E PREDICADOS
@@ -242,9 +261,66 @@ def enviar_whatsapp_direto(telefone, mensagem):
 # Se o status ANTERIOR (da planilha) já começava com um destes, o envelope já saiu do pré-envio.
 PREFIXOS_JA_EM_MOVIMENTO = ("TRANSIT", "DELIVERED", "RETURNED", "FAILURE")
 
-def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_evento_str=None, status_anterior=""):
+# Aviso que falhou fica na coluna WHATSAPP PENDENTE da planilha ("evento|data") e é reenviado a cada ciclo.
+COL_PENDENTE = "WHATSAPP PENDENTE"
+DIAS_REENVIO = 2  # depois disso a mensagem ("chegou hoje") já não serve: vira tarefa para avisar à mão
+
+
+def evento_whatsapp(novo_status, status_anterior):
+    """"coleta", "entrega" ou None para uma mudança de status. Função pura (testável).
+
+    "coleta" = PRIMEIRA vez que o rastreio sai do pré-envio e vira TRANSIT (qualquer texto do USPS:
+               "USPS in possession of item", "Accepted at...", "Picked Up"...). Só dispara uma vez.
+    "entrega" = quando vira DELIVERED (e não repete se já estava entregue).
+    """
     status_upper = str(novo_status).upper().strip()
     anterior_upper = str(status_anterior).upper().strip()
+    if "DELIVERED" in status_upper:
+        return None if anterior_upper.startswith("DELIVERED") else "entrega"
+    if status_upper.startswith("TRANSIT"):
+        return None if anterior_upper.startswith(PREFIXOS_JA_EM_MOVIMENTO) else "coleta"
+    return None
+
+
+def avisar_cliente(deal_id, tipo_envio, evento):
+    """Manda o aviso do evento. False só quando o envio falhou (vale tentar de novo)."""
+    trecho = classificar_envio(tipo_envio)
+    msg = REGRAS_WHATSAPP.get(trecho, {}).get(evento)
+    if not msg:
+        print(f"   🔕 Tipo '{tipo_envio}' ({trecho}), evento '{evento}': sem WhatsApp ao cliente.", flush=True)
+        return True
+    telefone = obter_telefone_bitrix(deal_id)
+    return not telefone or enviar_whatsapp_direto(telefone, msg)
+
+
+def pendencia(pendente, hoje=None):
+    """Lê a célula "evento|AAAA-MM-DD": devolve (evento, venceu). Função pura (testável)."""
+    evento, _, desde = str(pendente).strip().partition("|")
+    try:
+        dias = ((hoje or agora_br().date()) - date.fromisoformat(desde)).days
+    except ValueError:
+        return evento, True  # célula ilegível: não manda às cegas
+    return evento, dias > DIAS_REENVIO
+
+
+def reenviar_pendente(deal_id, tipo_envio, pendente):
+    """Tenta de novo o aviso que falhou. Devolve o novo valor da célula ("" = resolvido)."""
+    evento, venceu = pendencia(pendente)
+    if venceu:
+        criar_tarefa_bitrix(
+            deal_id,
+            f"📵 CLIENTE NÃO AVISADO ({evento}): {tipo_envio} - Negócio #{deal_id}",
+            f"O WhatsApp de {evento} do envio {tipo_envio} do pedido #{deal_id} falhou por mais de"
+            f" {DIAS_REENVIO} dias (número desconectado?). O sistema parou de tentar. Avise o cliente manualmente.",
+        )
+        return ""
+    print(f"   🔁 Reenviando WhatsApp pendente ({evento}) do Negócio #{deal_id}...", flush=True)
+    return "" if avisar_cliente(deal_id, tipo_envio, evento) else pendente
+
+
+def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_evento_str=None, status_anterior=""):
+    """Devolve (evento, enviado): o aviso que a mudança pede e se ele saiu."""
+    status_upper = str(novo_status).upper().strip()
     tipo_envio = str(tipo_envio).upper().strip()
 
     # REGRA 1: EXCEÇÕES E FALHAS USPS -> Criar Tarefa no Bitrix
@@ -252,28 +328,11 @@ def processar_regras_automacao(deal_id, novo_status, tipo_envio="IDA", data_even
         titulo = f"⚠️ EXCEÇÃO USPS: Negócio #{deal_id} ({tipo_envio})"
         descricao = f"O rastreio do Negócio #{deal_id} apresentou uma falha:\nStatus: {novo_status}"
         criar_tarefa_bitrix(deal_id, titulo, descricao)
-        return
+        return None, True
 
     # REGRA 2: DISPARO DE WHATSAPP (depende do trecho do envio)
-    # "coleta" = PRIMEIRA vez que o rastreio sai do pré-envio e vira TRANSIT (qualquer texto do USPS:
-    #            "USPS in possession of item", "Accepted at...", "Picked Up"...). Só dispara uma vez.
-    # "entrega" = quando vira DELIVERED (e não repete se já estava entregue).
-    if "DELIVERED" in status_upper:
-        evento = None if anterior_upper.startswith("DELIVERED") else "entrega"
-    elif status_upper.startswith("TRANSIT"):
-        evento = None if anterior_upper.startswith(PREFIXOS_JA_EM_MOVIMENTO) else "coleta"
-    else:
-        evento = None
-
-    if evento:
-        trecho = classificar_envio(tipo_envio)
-        msg = REGRAS_WHATSAPP.get(trecho, {}).get(evento)
-
-        if not msg:
-            print(f"   🔕 Tipo '{tipo_envio}' ({trecho}), evento '{evento}': sem WhatsApp ao cliente.", flush=True)
-        else:
-            telefone_cliente = obter_telefone_bitrix(deal_id)
-            enviar_whatsapp_direto(telefone_cliente, msg)
+    evento = evento_whatsapp(novo_status, status_anterior)
+    return evento, not evento or avisar_cliente(deal_id, tipo_envio, evento)
 
 # ==============================================================================
 # SLA: TAREFA NO BITRIX QUANDO O ENVIO PASSA DO PRAZO (checado em TODO ciclo)
@@ -484,8 +543,10 @@ def reembolsar_vencidas(vencidas, em_movimento=()):
         elif ida_postada(deal_id, recentes) is False:
             aviso_cliente = "O cliente não foi avisado: a ida deste pedido nunca foi postada."
         elif telefone := obter_telefone_bitrix(deal_id):
-            enviar_whatsapp_direto(telefone, mensagem)
-            aviso_cliente = "O cliente foi avisado por WhatsApp que a etiqueta foi cancelada."
+            if enviar_whatsapp_direto(telefone, mensagem):
+                aviso_cliente = "O cliente foi avisado por WhatsApp que a etiqueta foi cancelada."
+            else:
+                aviso_cliente = "O cliente NÃO foi avisado (falha no WhatsApp). Avise manualmente."
         else:
             aviso_cliente = "O cliente NÃO foi avisado (sem telefone no Bitrix). Avise manualmente."
         criar_tarefa_bitrix(
@@ -580,6 +641,10 @@ def rodar_monitoramento():
     idx_deal = next((i + 1 for i, c in enumerate(cabecalho) if "ID" in c or "DEAL" in c or "NEGOCIO" in c), None)
     idx_tipo = next((i + 1 for i, c in enumerate(cabecalho) if "TIPO" in c or "ENVIO" in c), None)
     idx_data = next((i + 1 for i, c in enumerate(cabecalho) if c == "DATA"), None)
+    idx_pendente = next((i + 1 for i, c in enumerate(cabecalho) if "PENDENTE" in c), None)
+    if not idx_pendente:  # primeira execução: cria a coluna no fim
+        idx_pendente = len(cabecalho) + 1
+        sheet.update_cell(1, idx_pendente, COL_PENDENTE)
 
     linhas = valores[1:]
     mudancas = 0
@@ -596,6 +661,8 @@ def rodar_monitoramento():
         deal_id = str(row[idx_deal - 1]).strip() if idx_deal and len(row) >= idx_deal else ""
         tipo_envio = str(row[idx_tipo - 1]).strip() if idx_tipo and len(row) >= idx_tipo else "IDA"
         data_criacao = str(row[idx_data - 1]).strip() if idx_data and len(row) >= idx_data else ""
+        pendente = str(row[idx_pendente - 1]).strip() if len(row) >= idx_pendente else ""
+        novo_pendente = pendente
 
         tracking_code = extrair_apenas_numeros_rastreio(rastreio)
         if not tracking_code: continue
@@ -613,7 +680,15 @@ def rodar_monitoramento():
             
             # 2. Executa Disparo de WhatsApp e/ou Alertas de Erro
             if deal_id:
-                processar_regras_automacao(deal_id, novo_status, tipo_envio, data_evento, status_atual)
+                evento, enviado = processar_regras_automacao(deal_id, novo_status, tipo_envio, data_evento, status_atual)
+                if evento:  # aviso novo substitui o pendente antigo (coleta atrasada não sai depois da entrega)
+                    novo_pendente = "" if enviado else f"{evento}|{agora_br():%Y-%m-%d}"
+
+        # 2b. Aviso que falhou num ciclo anterior: tenta de novo
+        if pendente and novo_pendente == pendente and deal_id:
+            novo_pendente = reenviar_pendente(deal_id, tipo_envio, pendente)
+        if novo_pendente != pendente:
+            sheet.update_cell(index, idx_pendente, novo_pendente)
 
         # 3. SLA: todo ciclo, mesmo sem mudança (envelope parado é justamente o caso do alerta)
         if novo_status:

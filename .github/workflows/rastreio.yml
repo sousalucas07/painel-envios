@@ -36,6 +36,7 @@ jobs:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           SHIPPO_LIVE_KEY: ${{ secrets.SHIPPO_LIVE_KEY }}
           WHATCRM_TOKEN: ${{ secrets.WHATCRM_TOKEN }}
+          WHATCRM_INSTANCE: ${{ secrets.WHATCRM_INSTANCE }}  # opcional: vazio = instância padrão do tracker.py
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python tracker.py
